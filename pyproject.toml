@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "efficio"
+version = "0.1.0"
+description = ""
+authors = ["Richard Lee <rlee@tokyo3.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+cadquery = "^2.1.1"
+numpy = ">=1.20,<1.23"
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.2"
+black = "^21.9b0"
+isort = "^5.9.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
