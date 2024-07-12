@@ -8,11 +8,6 @@ class Measure:
     def value(self) -> float:
         raise NotImplementedError('Measure::value()')
 
-        result = 1.0
-        if self._measure is not None:
-            result *= self._measure.value()
-        return self._value * self.ratio()
-
 
 class StaticMeasure(Measure):
     _value: float
