@@ -68,11 +68,11 @@ class TestObjects(unittest.TestCase):
         self.assertIsNotNone(bolt_bounds)
 
         # min/max x
-        self.assertAlmostEqual(bolt_bounds[0], M3_HEAD_RADIUS_MILLIMETERS.value())
+        self.assertAlmostEqual(bolt_bounds[0], -M3_HEAD_RADIUS_MILLIMETERS.value())
         self.assertAlmostEqual(bolt_bounds[3], M3_HEAD_RADIUS_MILLIMETERS.value())
 
         # min/max y
-        self.assertAlmostEqual(bolt_bounds[1], M3_HEAD_RADIUS_MILLIMETERS.value())
+        self.assertAlmostEqual(bolt_bounds[1], -M3_HEAD_RADIUS_MILLIMETERS.value())
         self.assertAlmostEqual(bolt_bounds[4], M3_HEAD_RADIUS_MILLIMETERS.value())
 
         # min/max z

@@ -29,7 +29,7 @@ class Alignment(Enum):
 class Shape:
 
     def workplane(self) -> cadquery.Workplane:
-        raise NotImplementedError('Shape::shape()')
+        raise NotImplementedError('Shape::workplane()')
 
     def bounds(self) -> Optional[Tuple[float, float, float, float, float, float]]:
         raise NotImplementedError('Shape::bounds()')
@@ -43,6 +43,9 @@ class Shape:
     def union(self, other: 'Shape') -> 'Shape':
         raise NotImplementedError('Shape::union()')
 
+    def translate(self, x, y, z) -> 'Shape':
+        raise NotImplementedError('Shape::translate()')
+
 
 class WorkplaneShape(Shape):
     _orientation: Orientation
@@ -52,21 +55,27 @@ class WorkplaneShape(Shape):
         self._orientation = orientation
         self._workplane = cadquery.Workplane(self._orientation.value)
 
-    def circle(self, radius: float) -> 'WorkplaneShape':
+    def workplane(self) -> cadquery.Workplane:
+        return self._workplane
+
+    def circle(self, radius: float) -> Shape:
         self._workplane = self._workplane.circle(radius)
         return self
     
-    def extrude(self, distance: float) -> 'WorkplaneShape':
+    def extrude(self, distance: float) -> Shape:
         self._workplane = self._workplane.extrude(distance)
         return self
 
-    def union(self, other: Shape) -> 'WorkplaneShape':
+    def union(self, other: Shape) -> Shape:
         if not isinstance(other, self.__class__):
             raise TypeError(f"Unsupported Shape: {type(other).__name__}")
         
         self._workplane = self._workplane.union(other.workplane())
         return self
-        
+
+    def translate(self, x: float, y: float, z: float) -> Shape:
+        self._workplane = self._workplane.translate((x, y, z))
+        return self
 
     def bounds(self) -> Optional[Tuple[float, float, float, float, float, float]]:
         shapes = self._workplane.vals()
@@ -135,7 +144,7 @@ class M3BoltHead(BasicObject):
 
     def shape(self) -> Optional[Shape]:
         head_length_mm = M3_HEAD_HEIGHT_MILLIMETERS.value()
-        head_radius_mm = M3_SHAFT_RADIUS_MILLIMETERS.value()
+        head_radius_mm = M3_HEAD_RADIUS_MILLIMETERS.value()
         head_clearance_mm = 0.0
         if self._has_clearance:
             head_clearance_mm += M3_BOLT_CLEARANCE_MILLIMETERS.value()
@@ -157,7 +166,7 @@ class M3Bolt(BasicObject):
         if head_shape is None:
             return None
 
-        shaft_shape = self.shaft.shape()
+        shaft_shape = self.shaft.shape().translate(0, 0, M3_HEAD_HEIGHT_MILLIMETERS.value())
         if shaft_shape is None:
             return None
 
