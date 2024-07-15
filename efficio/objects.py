@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, BinaryIO
 from enum import Enum
 
 import cadquery
@@ -49,6 +49,19 @@ class Shape:
     def polygon(self, sides: int, side_length: float) -> 'Shape':
         raise NotImplementedError('Shape::polygon()')
 
+    def as_stl(self, wfp: BinaryIO) -> None:
+        raise NotImplementedError('Shape::as_stl()')
+
+    def as_svg(self, wfp: BinaryIO, projection: Tuple[float, float, float] = (1.0, 1.0, 1.0)) -> None:
+        raise NotImplementedError('Shape::as_stl()')
+
+    def as_stl_file(self, filename: str) -> None:
+        with open(filename, 'wb') as wfp:
+            self.as_stl(wfp)
+
+    def as_svg_file(self, filename: str, projection: Tuple[float, float, float] = (1.0, 1.0, 1.0)) -> None:
+        with open(filename, 'wb') as wfp:
+            self.as_svg(wfp, projection)
 
 class WorkplaneShape(Shape):
     _orientation: Orientation
@@ -104,6 +117,12 @@ class WorkplaneShape(Shape):
             max_z = max(max_z, bounding_box.zmax)
 
         return min_x, min_y, min_z, max_x, max_y, max_z
+
+    def as_stl(self, wfp: BinaryIO) -> None:
+        cadquery.exporters.exportShape(self._workplane, wfp, exportType='STL')
+
+    def as_svg(self, wfp: BinaryIO, projection: Tuple[float, float, float] = (1.0, 1.0, 1.0)) -> None:
+        cadquery.exporters.exportShape(self._workplane, wfp, exportType='SVG', opt={"projectionDir": projection})
 
 
 def new_shape(orientation: Orientation = Orientation.Front) -> WorkplaneShape:
