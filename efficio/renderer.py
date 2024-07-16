@@ -4,7 +4,9 @@ from typing import Tuple
 
 import cadquery as cq
 from PIL import Image
-import cairosvg # type: ignore
+
+from svglib.svglib import svg2rlg  # type: ignore
+from reportlab.graphics import renderPM  # type: ignore
 
 def create_view_svg(shape: cq.Workplane, projection_dir: Tuple[float, float, float]) -> bytes:
     svg_buffer = io.BytesIO()
@@ -12,8 +14,11 @@ def create_view_svg(shape: cq.Workplane, projection_dir: Tuple[float, float, flo
     return svg_buffer.getvalue()
 
 def convert_svg_to_png(svg_data: bytes) -> Image.Image:
+    svg_string = svg_data.decode('utf-8')
+    drawing = svg2rlg(io.StringIO(svg_string))
     png_buffer = io.BytesIO()
-    cairosvg.svg2png(bytestring=svg_data, write_to=png_buffer)
+    renderPM.drawToFile(drawing, png_buffer, fmt="PNG")
+    png_buffer.seek(0)
     return Image.open(png_buffer)
 
 def create_composite_image(obj: cq.Workplane) -> Image.Image:

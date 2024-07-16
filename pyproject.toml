@@ -9,8 +9,9 @@ readme = "README.md"
 python = "^3.9"
 cadquery = "^2.1.1"
 numpy = ">=1.20,<1.23"
-cairosvg = "^2.5.2"
 pillow = "^8.2.0"
+reportlab = "^3.5.67"
+svglib = "^1.0.1"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2"

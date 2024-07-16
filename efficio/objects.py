@@ -129,13 +129,13 @@ def new_shape(orientation: Orientation = Orientation.Front) -> WorkplaneShape:
     return WorkplaneShape(orientation)
         
 
-class BasicObject:
+class EfficioObject:
 
     def cut(self) -> Optional[Shape]:
         return None
 
     def shape(self) -> Optional[Shape]:
-        raise NotImplementedError('BasicObject::shape()')
+        raise NotImplementedError('EfficioObject::shape()')
 
 
 M3_BOLT_CLEARANCE_MILLIMETERS = Millimeter(0.20)
@@ -147,7 +147,7 @@ M3_NUT_WAC_MILLIMETERS = Millimeter(6.35)
 M3_NUT_HEIGHT_MILLIMETERS = Millimeter(2.4)
 
 
-class M3BoltShaft(BasicObject):
+class M3BoltShaft(EfficioObject):
     _length: Measure
     _has_clearance: bool
 
@@ -170,7 +170,7 @@ class M3BoltShaft(BasicObject):
         return self._length
         
 
-class M3BoltHead(BasicObject):
+class M3BoltHead(EfficioObject):
     _has_clearance: bool
 
     def __init__(self, has_clearance: bool):
@@ -186,7 +186,7 @@ class M3BoltHead(BasicObject):
         head_shape = new_shape(Orientation.Front).circle(head_radius_mm + head_clearance_mm).extrude(head_length_mm)
         return head_shape
 
-class M3Bolt(BasicObject):
+class M3Bolt(EfficioObject):
     head: M3BoltHead
     shaft: M3BoltShaft
     
@@ -207,7 +207,7 @@ class M3Bolt(BasicObject):
         return head_shape.union(shaft_shape)
 
 
-class M3HexNut(BasicObject):
+class M3HexNut(EfficioObject):
     _has_clearance: bool
 
     def __init__(self, has_clearance: bool):
@@ -223,7 +223,7 @@ class M3HexNut(BasicObject):
         nut_shape = new_shape(Orientation.Front).polygon(6, nut_wac_mm + nut_clearance_mm).extrude(nut_height_mm)
         return nut_shape
 
-class M3BoltAssembly(BasicObject):
+class M3BoltAssembly(EfficioObject):
     bolt: M3Bolt
     nut: M3HexNut
 
