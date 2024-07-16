@@ -6,5 +6,6 @@ __all__ = [
     'Orientation',
     'M3Bolt',
     'M3BoltAssembly',
-    'new_shape'
+    'new_shape',
+    'parse_measure'
 ]

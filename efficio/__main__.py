@@ -1,16 +1,17 @@
 import argparse
+import sys
 import os
 import importlib.util
 import inspect
 
-from typing import Type, List, Tuple, Optional, Union, Sequence, Any, Dict, get_type_hints
+from typing import Type, List, Tuple, Optional, Union, Sequence, Any, Dict, get_type_hints, NoReturn
 
 import efficio
+import efficio.renderer
 
 def find_subclasses_in_directory(target_class: Type[Any], directory: str) -> List[Type[Any]]:
     subclasses = []
 
-    # Traverse the directory to find all Python files
     for root, _, files in os.walk(directory):
         for file in files:
             if file.endswith('.py'):
@@ -41,21 +42,86 @@ def get_constructor_params(cls: Type[Any]) -> Dict[str, Any]:
     return params
 
 
-def fetch_object_data() -> Dict[str,Dict[str, str]]:
+def fetch_object_data() -> Dict[Type[Any],Dict[str, str]]:
     main_directory = os.path.dirname(os.path.abspath(__file__))
     subclasses = find_subclasses_in_directory(efficio.EfficioObject, main_directory)
 
     result = {}
     for subclass in subclasses:
-        class_name = subclass.__name__
         class_params = get_constructor_params(subclass)
         param_dict = {class_param: class_params[class_param] for class_param in class_params}
-        result[class_name] = param_dict
+        result[subclass] = param_dict
             
     return result
 
+
+def print_valid_classes(message: str, options: Dict[Type[Any],Dict[str, str]], only_class: str = "") -> None:
+    if message:
+        sys.stderr.write(f'\nError: {message}\n\n')
+        sys.stderr.write('Please provide the required arguments as shown in the usage message above.\n')
+
+    for obj_class in options:
+        obj_name = obj_class.__name__
+        params = ['--object', obj_name]
+        obj_params = options[obj_class]
+        for param_name in obj_params:
+            params.append(f'--params {param_name}=<{obj_params[param_name]}>')
+        sys.stderr.write(' '.join(params))
+        sys.stderr.write("\n")
+
+
+class EfficioArgumentParser(argparse.ArgumentParser):
+
+    def error(self, message: str) -> NoReturn:
+        options = fetch_object_data()
+        print_valid_classes(message, options)
+
+        sys.exit(2)
+
+def str_to_bool(value: str) -> bool:
+    if value.lower() in {'true', 'yes', 'y', '1'}:
+        return True
+    elif value.lower() in {'false', 'no', 'n', '0'}:
+        return False
+    else:
+        raise ValueError(f"Invalid boolean value: '{value}'")
+
+
 def main(obj_name: str, obj_params: List[Tuple[str, str]]) -> None:
-    pass
+    options = fetch_object_data()
+
+    option_names = {x.__name__: x for x in options}
+    if obj_name not in option_names:
+        print_valid_classes(f"{obj_name} is not a valid object", options) 
+        sys.exit(2)
+    obj_class = option_names[obj_name]
+    obj_param_dict = { x[0]: x[1] for x in obj_params }
+    
+    option_params = options[obj_class]
+    kwargs: Dict[str, Any] = {}
+    for option_name in option_params:
+        option_type = option_params[option_name]
+        if option_name not in option_params:
+            print_valid_classes(f"{option_name} is required for {obj_name}", options)
+            sys.exit(3)
+        option_value = obj_param_dict[option_name]
+
+        if option_type == 'Measure':
+            kwargs[option_name] = efficio.parse_measure(option_value)            
+        elif option_type == 'bool':
+            kwargs[option_name] = str_to_bool(option_value)
+        else:
+            kwargs[option_name] = option_value
+
+    obj_class = option_names[obj_name]
+    instance = obj_class(**kwargs)
+    shape = instance.shape()
+    if not hasattr(shape, 'workplane'):
+        print_valid_classes(f'{obj_name} is not a cadquery shape', options)
+        sys.exit(4)
+    image = efficio.renderer.create_composite_image(shape.workplane())
+    image.save('output.png', 'PNG')
+        
 
 class parse_obj_params(argparse.Action):
     def __call__(
@@ -65,7 +131,9 @@ class parse_obj_params(argparse.Action):
         values: Union[str, Sequence[Any], None],
         option_string: Optional[str] = None
     ) -> None:
-        params = getattr(namespace, self.dest, [])
+        params = getattr(namespace, self.dest, None)
+        if params is None:
+            params = []
         if type(values) != str:
             raise TypeError(f"Expected type string but got: {type(values).__name__}")
         key, value = values.split('=', 1)
@@ -73,10 +141,7 @@ class parse_obj_params(argparse.Action):
         setattr(namespace, self.dest, params)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Process some parameters.")
-
-    options = fetch_object_data()
-    print(options)
+    parser = EfficioArgumentParser(description="Process some parameters.")
     
     parser.add_argument('--object', type=str, required=True, help='The name of the object')
     parser.add_argument('--params', action=parse_obj_params, help='Key-value pair parameters in the form key=value')

@@ -1,3 +1,4 @@
+import re
 
 class Measure:
 
@@ -34,7 +35,6 @@ class CompoundMeasure(Measure):
     def value(self) -> float:
         return self._measure.value() * self._value
 
-
 class Millimeter(StaticMeasure):
 
     @staticmethod
@@ -46,3 +46,28 @@ class Inch(StaticMeasure):
     @staticmethod
     def ratio() -> float:
         return 25.4
+
+def parse_measure(value: str) -> Measure:
+    pattern = r'^\s*(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>[a-zA-Z]*)\s*$'
+    match = re.match(pattern, value)
+    if not match:
+        raise ValueError(f"Invalid distance value: '{value}'")
+    
+    float_value = float(match.group('value'))
+    unit = match.group('unit').lower()
+
+    canonical_units = {
+        'mm': Millimeter,
+        'millimeter': Millimeter,
+        'in': Inch,
+        'inch': Inch,
+        'inches': Inch,
+    }
+
+    if unit and unit not in canonical_units:
+        raise ValueError(f"Unknown unit: '{unit}'")
+
+    canonical_unit = canonical_units.get(unit, Millimeter)  # Default to meters if no unit provided
+
+    return canonical_unit(float_value)
+

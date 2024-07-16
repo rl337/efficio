@@ -119,10 +119,10 @@ class WorkplaneShape(Shape):
         return min_x, min_y, min_z, max_x, max_y, max_z
 
     def as_stl(self, wfp: BinaryIO) -> None:
-        cadquery.exporters.exportShape(self._workplane, wfp, exportType='STL')
+        cadquery.exporters.exportShape(shape=self._workplane, file=wfp, exportType='STL')
 
     def as_svg(self, wfp: BinaryIO, projection: Tuple[float, float, float] = (1.0, 1.0, 1.0)) -> None:
-        cadquery.exporters.exportShape(self._workplane, wfp, exportType='SVG', opt={"projectionDir": projection})
+        cadquery.exporters.exportShape(shape=self._workplane, file=wfp, exportType='SVG', opt={"projectionDir": projection})
 
 
 def new_shape(orientation: Orientation = Orientation.Front) -> WorkplaneShape:

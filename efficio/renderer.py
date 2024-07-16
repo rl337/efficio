@@ -9,17 +9,39 @@ from svglib.svglib import svg2rlg  # type: ignore
 from reportlab.graphics import renderPM  # type: ignore
 
 def create_view_svg(shape: cq.Workplane, projection_dir: Tuple[float, float, float]) -> bytes:
-    svg_buffer = io.BytesIO()
-    cq.exporters.exportShape(shape, svg_buffer, exportType='SVG', opt={"projectionDir": projection_dir})
-    return svg_buffer.getvalue()
+    svg = cq.exporters.svg.getSVG(
+        shape.val(),
+        opts={
+            "width": 800,
+            "height": 800,
+            "marginLeft": 50,
+            "marginTop": 50,
+            "projectionDir": projection_dir,
+            "strokeWidth": 2,
+            "strokeColor": (0, 0, 0),
+            "hiddenColor": (0, 0, 255),
+            "showAxis": True,
+        }
+    ) # type: ignore
+    return str(svg).encode('utf8')
 
-def convert_svg_to_png(svg_data: bytes) -> Image.Image:
-    svg_string = svg_data.decode('utf-8')
-    drawing = svg2rlg(io.StringIO(svg_string))
+def convert_svg_to_png(svg_bytes: bytes) -> Image.Image:
+    svg_buffer = io.BytesIO(svg_bytes)
+    drawing = svg2rlg(svg_buffer)
+
     png_buffer = io.BytesIO()
-    renderPM.drawToFile(drawing, png_buffer, fmt="PNG")
+    try:
+        # Convert the drawing to a PNG
+        renderPM.drawToFile(drawing, png_buffer, fmt="PNG")
+    except Exception as e:
+        raise RuntimeError(f"Error converting drawing to PNG: {e}")
+
+    png_content = png_buffer.getvalue()
+
     png_buffer.seek(0)
-    return Image.open(png_buffer)
+    img = Image.open(png_buffer)
+
+    return img
 
 def create_composite_image(obj: cq.Workplane) -> Image.Image:
     # Generate SVGs for different views
@@ -49,5 +71,3 @@ def create_composite_image(obj: cq.Workplane) -> Image.Image:
     composite_image.paste(img_iso, (width, height))
 
     return composite_image
-
-
