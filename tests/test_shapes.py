@@ -53,7 +53,7 @@ class TestObjects(unittest.TestCase):
         bolt = efficio.M3Bolt(efficio.Millimeter(13.0), False)
         self.assertIsNotNone(bolt)
 
-        from efficio.objects import (
+        from efficio.objects.m3 import (
             M3_HEAD_RADIUS_MILLIMETERS,
             M3_HEAD_HEIGHT_MILLIMETERS
         )
@@ -83,7 +83,7 @@ class TestObjects(unittest.TestCase):
         bolt = efficio.M3BoltAssembly(efficio.Millimeter(13.0), False)
         self.assertIsNotNone(bolt)
 
-        from efficio.objects import (
+        from efficio.objects.m3 import (
             M3_HEAD_HEIGHT_MILLIMETERS,
             M3_NUT_WAF_MILLIMETERS,
             M3_NUT_WAC_MILLIMETERS,
