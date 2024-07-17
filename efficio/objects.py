@@ -49,19 +49,11 @@ class Shape:
     def polygon(self, sides: int, side_length: float) -> 'Shape':
         raise NotImplementedError('Shape::polygon()')
 
-    def as_stl(self, wfp: BinaryIO) -> None:
-        raise NotImplementedError('Shape::as_stl()')
-
-    def as_svg(self, wfp: BinaryIO, projection: Tuple[float, float, float] = (1.0, 1.0, 1.0)) -> None:
-        raise NotImplementedError('Shape::as_stl()')
-
     def as_stl_file(self, filename: str) -> None:
-        with open(filename, 'wb') as wfp:
-            self.as_stl(wfp)
+        raise NotImplementedError('Shape::as_stl_file()')
 
     def as_svg_file(self, filename: str, projection: Tuple[float, float, float] = (1.0, 1.0, 1.0)) -> None:
-        with open(filename, 'wb') as wfp:
-            self.as_svg(wfp, projection)
+        raise NotImplementedError('Shape::as_svg_file()')
 
 class WorkplaneShape(Shape):
     _orientation: Orientation
@@ -118,11 +110,11 @@ class WorkplaneShape(Shape):
 
         return min_x, min_y, min_z, max_x, max_y, max_z
 
-    def as_stl(self, wfp: BinaryIO) -> None:
-        cadquery.exporters.exportShape(shape=self._workplane, file=wfp, exportType='STL')
+    def as_stl_file(self, filename: str) -> None:
+        cadquery.exporters.export(self._workplane, fname=filename, exportType='STL')
 
-    def as_svg(self, wfp: BinaryIO, projection: Tuple[float, float, float] = (1.0, 1.0, 1.0)) -> None:
-        cadquery.exporters.exportShape(shape=self._workplane, file=wfp, exportType='SVG', opt={"projectionDir": projection})
+    def as_svg_file(self, filename: str, projection: Tuple[float, float, float] = (1.0, 1.0, 1.0)) -> None:
+        cadquery.exporters.export(self._workplane, fname=filename, exportType='SVG', opt={"projectionDir": projection})
 
 
 def new_shape(orientation: Orientation = Orientation.Front) -> WorkplaneShape:

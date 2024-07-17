@@ -87,7 +87,7 @@ def str_to_bool(value: str) -> bool:
         raise ValueError(f"Invalid boolean value: '{value}'")
 
 
-def main(obj_name: str, obj_params: List[Tuple[str, str]]) -> None:
+def main(obj_name: str, obj_params: List[Tuple[str, str]], png_file: str, stl_file: str) -> None:
     options = fetch_object_data()
 
     option_names = {x.__name__: x for x in options}
@@ -119,9 +119,13 @@ def main(obj_name: str, obj_params: List[Tuple[str, str]]) -> None:
     if not hasattr(shape, 'workplane'):
         print_valid_classes(f'{obj_name} is not a cadquery shape', options)
         sys.exit(4)
-    image = efficio.renderer.create_composite_image(shape.workplane())
-    image.save('output.png', 'PNG')
-        
+
+    if png_file:
+        image = efficio.renderer.create_composite_image(shape.workplane())
+        image.save(png_file, 'PNG')
+
+    if stl_file:
+        shape.as_stl_file(stl_file)
 
 class parse_obj_params(argparse.Action):
     def __call__(
@@ -145,7 +149,9 @@ if __name__ == '__main__':
     
     parser.add_argument('--object', type=str, required=True, help='The name of the object')
     parser.add_argument('--params', action=parse_obj_params, help='Key-value pair parameters in the form key=value')
+    parser.add_argument('--png', type=str, help='output png')
+    parser.add_argument('--stl', type=str, help='output stl')
 
     args = parser.parse_args()
 
-    main(args.object, args.params)
+    main(args.object, args.params, args.png, args.stl)
