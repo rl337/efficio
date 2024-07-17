@@ -7,6 +7,7 @@ from efficio.measures import (
 
 from efficio.objects.base import EfficioObject
 from efficio.objects.shapes import new_shape, Orientation, Shape
+from efficio.objects.primitives import Cylinder
 
 
 M3_BOLT_CLEARANCE_MILLIMETERS = Millimeter(0.20)
@@ -16,6 +17,7 @@ M3_HEAD_RADIUS_MILLIMETERS = Millimeter(5.5/2)
 M3_NUT_WAF_MILLIMETERS = Millimeter(5.5)
 M3_NUT_WAC_MILLIMETERS = Millimeter(6.35)
 M3_NUT_HEIGHT_MILLIMETERS = Millimeter(2.4)
+M3_CHANNEL_PADDING_MILLIMETERS = Millimeter(0.5)
 
 
 class M3BoltShaft(EfficioObject):
@@ -117,3 +119,31 @@ class M3BoltAssembly(EfficioObject):
 
         nut_shape = nut_shape.translate(0, 0, head_height_mm + shaft_height_mm - nut_height_mm)
         return bolt_shape.union(nut_shape)
+
+class M3BoltChannel(EfficioObject):
+    bolt_assembly: M3BoltAssembly
+    column: Cylinder
+
+    def __init__(self, length: Measure):
+        self.bolt_assembly = M3BoltAssembly(length, True)
+        
+        bolt_assembly_bounds = self.bolt_assembly.shape().bounds()
+        assembly_width = bolt_assembly_bounds[3] - bolt_assembly_bounds[0]
+        assembly_length = bolt_assembly_bounds[4] - bolt_assembly_bounds[1]
+        assembly_height = bolt_assembly_bounds[5] - bolt_assembly_bounds[2]
+        max_diameter = assembly_width
+        if assembly_length > max_diameter:
+            max_diameter = assembly_length
+        
+        self.column = Cylinder(
+            Millimeter(assembly_height),
+            Millimeter(max_diameter/2 + M3_CHANNEL_PADDING_MILLIMETERS.value())
+        )
+
+    def shape(self) -> Optional[Shape]:
+        channel = self.column.shape()
+        assembly = self.bolt_assembly.shape()
+        return channel.cut(assembly)
+
+    def cut(self) -> Optional[Shape]:
+        return self.column.shape()

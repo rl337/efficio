@@ -16,6 +16,9 @@ class Shape:
     def bounds(self) -> Optional[Tuple[float, float, float, float, float, float]]:
         raise NotImplementedError('Shape::bounds()')
 
+    def box(self, width: float, length: float, depth: float) -> 'Shape':
+        raise NotImplementedError('Shape::box()')
+
     def circle(self, radius: float) -> 'Shape':
         raise NotImplementedError('Shape::circle()')
     
@@ -24,6 +27,9 @@ class Shape:
 
     def union(self, other: 'Shape') -> 'Shape':
         raise NotImplementedError('Shape::union()')
+
+    def cut(self, other: 'Shape') -> 'Shape':
+        raise NotImplementedError('Shape::cut()')
 
     def translate(self, x: float, y: float, z: float) -> 'Shape':
         raise NotImplementedError('Shape::translate()')
@@ -48,6 +54,9 @@ class WorkplaneShape(Shape):
     def workplane(self) -> cadquery.Workplane:
         return self._workplane
 
+    def box(self, width: float, length: float, depth: float) -> 'Shape':
+        self._workplane = self._workplane.box(width, length, depth)
+
     def circle(self, radius: float) -> Shape:
         self._workplane = self._workplane.circle(radius)
         return self
@@ -61,6 +70,13 @@ class WorkplaneShape(Shape):
             raise TypeError(f"Unsupported Shape: {type(other).__name__}")
         
         self._workplane = self._workplane.union(other.workplane())
+        return self
+
+    def cut(self, other: Shape) -> Shape:
+        if not isinstance(other, self.__class__):
+            raise TypeError(f"Unsupported Shape: {type(other).__name__}")
+        
+        self._workplane = self._workplane.cut(other.workplane())
         return self
 
     def translate(self, x: float, y: float, z: float) -> Shape:
