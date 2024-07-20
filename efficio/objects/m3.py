@@ -126,8 +126,15 @@ class M3BoltChannel(EfficioObject):
 
     def __init__(self, length: Measure):
         self.bolt_assembly = M3BoltAssembly(length, True)
+
+        assembly_shape = self.bolt_assembly.shape()
+        if assembly_shape is None:
+            return
         
-        bolt_assembly_bounds = self.bolt_assembly.shape().bounds()
+        bolt_assembly_bounds = assembly_shape.bounds()
+        if bolt_assembly_bounds is None:
+            return
+
         assembly_width = bolt_assembly_bounds[3] - bolt_assembly_bounds[0]
         assembly_length = bolt_assembly_bounds[4] - bolt_assembly_bounds[1]
         assembly_height = bolt_assembly_bounds[5] - bolt_assembly_bounds[2]
@@ -142,7 +149,13 @@ class M3BoltChannel(EfficioObject):
 
     def shape(self) -> Optional[Shape]:
         channel = self.column.shape()
+        if channel is None:
+            return None
+
         assembly = self.bolt_assembly.shape()
+        if assembly is None:
+            return None
+
         return channel.cut(assembly)
 
     def cut(self) -> Optional[Shape]:

@@ -34,8 +34,20 @@ class Shape:
     def translate(self, x: float, y: float, z: float) -> 'Shape':
         raise NotImplementedError('Shape::translate()')
 
+    def rotate(self, x: float, y: float, z: float) -> 'Shape':
+        raise NotImplementedError('Shape::rotate()')
+
     def polygon(self, sides: int, side_length: float) -> 'Shape':
         raise NotImplementedError('Shape::polygon()')
+
+    def fillet_edges(self, radius: float) -> 'Shape':
+        raise NotImplementedError('Shape::fillet_edges()')
+
+    def cut_from_top(self, distance_from_top: float, clone: bool = False) -> 'Shape':
+        raise NotImplementedError('Shape::cut_from_top()')
+
+    def cut_from_bottom(self, distance_from_bottom: float, clone: bool = False) -> 'Shape':
+        raise NotImplementedError('Shape::cut_from_bottom()')
 
     def as_stl_file(self, filename: str) -> None:
         raise NotImplementedError('Shape::as_stl_file()')
@@ -56,6 +68,7 @@ class WorkplaneShape(Shape):
 
     def box(self, width: float, length: float, depth: float) -> 'Shape':
         self._workplane = self._workplane.box(width, length, depth)
+        return self
 
     def circle(self, radius: float) -> Shape:
         self._workplane = self._workplane.circle(radius)
@@ -83,9 +96,44 @@ class WorkplaneShape(Shape):
         self._workplane = self._workplane.translate((x, y, z))
         return self
 
+    def rotate(self, x: float, y: float, z: float) -> 'Shape':
+        if x:
+            self._workplane = self._workplane.rotate((0, 0, 0), (1, 0, 0), x)
+        if y:
+            self._workplane = self._workplane.rotate((0, 0, 0), (0, 1, 0), y)
+        if z:
+            self._workplane = self._workplane.rotate((0, 0, 0), (0, 0, 1), z)
+
+        return self
+
     def polygon(self, sides: int, side_length: float) -> Shape:
         self._workplane = self._workplane.polygon(sides,  side_length)
         return self
+
+    def fillet_edges(self, radius: float) -> 'Shape':
+        self._workplane = self._workplane.edges().fillet(radius)
+        return self
+
+    def cut_from_top(self, distance_from_top: float, clone: bool = False) -> 'Shape':
+        result = self._workplane.faces(">Z").workplane(-distance_from_top).split(keepTop=True)
+        if not clone:
+            self._workplane = result
+            return self
+
+        cloned = WorkplaneShape(self._orientation)
+        cloned._workplane = result
+        return cloned
+
+    def cut_from_bottom(self, distance_from_bottom: float, clone: bool = False) -> 'Shape':
+        result = self._workplane.faces("<Z").workplane(-distance_from_bottom).split(keepTop=True)
+        if not clone:
+            self._workplane = result
+            return self
+
+        cloned = WorkplaneShape(self._orientation)
+        cloned._workplane = result
+        return cloned
+
 
     def bounds(self) -> Optional[Tuple[float, float, float, float, float, float]]:
         shapes = self._workplane.vals()

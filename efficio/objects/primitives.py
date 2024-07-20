@@ -29,9 +29,9 @@ class Box(EfficioObject):
     depth: Measure
 
     def __init__(self, width: Measure, length: Measure, depth: Measure):
-        self.width = radius
+        self.width = width
         self.length = length
-        self.depth = radius
+        self.depth = depth
 
     def shape(self) -> Optional[Shape]:
         width_mm = self.width.value()
