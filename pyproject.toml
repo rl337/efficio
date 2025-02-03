@@ -6,20 +6,17 @@ authors = ["Richard Lee <rlee@tokyo3.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.9"
-cadquery = "^2.1.1"
-numpy = ">=1.20,<1.23"
-pillow = "^8.2.0"
-reportlab = "^3.5.67"
+python = "^3.12"
+cadquery = "^2.5.2"
+pillow = "^11.1.0"
+reportlab = "^4.2.5"
 svglib = "^1.0.1"
-
-[tool.poetry.dev-dependencies]
-pytest = "^6.2"
-black = "^21.9b0"
-isort = "^5.9.3"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.10.1"
+pytest = "^6.2"
+black = "^21.9b0"
+isort = "^5.9.3"
 
 [build-system]
 requires = ["poetry-core"]

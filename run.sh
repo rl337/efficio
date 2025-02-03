@@ -1,4 +1,4 @@
 
-python3 -m poetry run mypy . && \
-    python3 -m poetry run pytest  && \
-    python3 -m poetry run python -m efficio "$@"
+poetry run mypy . && \
+    poetry run pytest  && \
+    poetry run python -m efficio "$@"

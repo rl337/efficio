@@ -125,7 +125,10 @@ class M3BoltChannel(EfficioObject):
     column: Cylinder
 
     def __init__(self, length: Measure):
-        self.bolt_assembly = M3BoltAssembly(length, True)
+        bolt_length = Millimeter(
+            length.value() - M3_HEAD_HEIGHT_MILLIMETERS.value()
+        )
+        self.bolt_assembly = M3BoltAssembly(bolt_length, True)
 
         assembly_shape = self.bolt_assembly.shape()
         if assembly_shape is None:

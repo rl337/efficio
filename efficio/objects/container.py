@@ -8,6 +8,7 @@ from efficio.measures import (
 from efficio.objects.base import EfficioObject
 from efficio.objects.shapes import new_shape, Orientation, Shape
 from efficio.objects.primitives import Cylinder
+from efficio.objects.m3 import M3BoltChannel
 
 
 BOX_FILLET_RADIUS = Millimeter(3)
@@ -46,6 +47,15 @@ class RoundedBox(EfficioObject):
         ).fillet_edges(BOX_FILLET_RADIUS.value())
 
         hollow_box = box_shape.cut(inside_shape)
+        channel = M3BoltChannel(self.depth)
+        channel_cut = channel.cut()
+        if channel_cut:
+            hollow_box.cut(channel_cut.translate(0, 0, -box_depth_mm/2))
+        channel_shape = channel.shape()
+        if channel_shape:
+            hollow_box.union(channel_shape.translate(0, 0, -box_depth_mm/2))
+
+
         box_top = hollow_box.cut_from_top(BOX_LID_HEIGHT.value(), clone=True).translate(
             0,
             0,
