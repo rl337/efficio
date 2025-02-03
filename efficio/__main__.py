@@ -87,8 +87,11 @@ def str_to_bool(value: str) -> bool:
         raise ValueError(f"Invalid boolean value: '{value}'")
 
 
-def main(obj_name: str, obj_params: List[Tuple[str, str]], png_file: str, stl_file: str) -> None:
+def main(obj_name: str, obj_params: Optional[List[Tuple[str, str]]], png_file: Optional[str], stl_file: Optional[str]) -> None:
     options = fetch_object_data()
+
+    if obj_params is None:
+        obj_params = []
 
     option_names = {x.__name__: x for x in options}
     if obj_name not in option_names:
@@ -101,7 +104,7 @@ def main(obj_name: str, obj_params: List[Tuple[str, str]], png_file: str, stl_fi
     kwargs: Dict[str, Any] = {}
     for option_name in option_params:
         option_type = option_params[option_name]
-        if option_name not in option_params:
+        if option_name not in obj_param_dict:
             print_valid_classes(f"{option_name} is required for {obj_name}", options)
             sys.exit(3)
         option_value = obj_param_dict[option_name]
@@ -149,9 +152,8 @@ if __name__ == '__main__':
     
     parser.add_argument('--object', type=str, required=True, help='The name of the object')
     parser.add_argument('--params', action=parse_obj_params, help='Key-value pair parameters in the form key=value')
-    parser.add_argument('--png', type=str, help='output png')
-    parser.add_argument('--stl', type=str, help='output stl')
+    parser.add_argument('--png', type=str, help='Write as a PNG to this file.')
+    parser.add_argument('--stl', type=str, help='Write as an STL to this file.')
 
     args = parser.parse_args()
-
     main(args.object, args.params, args.png, args.stl)

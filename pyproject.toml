@@ -9,8 +9,9 @@ readme = "README.md"
 python = "^3.12"
 cadquery = "^2.5.2"
 pillow = "^11.1.0"
-reportlab = "^4.2.5"
+reportlab = "^4.3.0"
 svglib = "^1.0.1"
+rlPyCairo = "^0.3.0"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.10.1"
