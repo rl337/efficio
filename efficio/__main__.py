@@ -1,4 +1,5 @@
 import argparse
+from enum import Enum
 import sys
 import os
 import importlib.util
@@ -24,12 +25,14 @@ def find_subclasses_in_directory(target_class: Type[Any], directory: str) -> Lis
                     spec.loader.exec_module(module)
                     
                     for name, obj in inspect.getmembers(module, inspect.isclass):
+                        if name.startswith('Abstract'):
+                            continue
                         if issubclass(obj, target_class) and obj is not target_class:
                             subclasses.append(obj)
 
     return subclasses
 
-def get_constructor_params(cls: Type[Any]) -> Dict[str, Any]:
+def get_constructor_params(cls: Type[Any]) -> Dict[str, Tuple[str, type]]:
     sig = inspect.signature(cls.__init__)
     type_hints = get_type_hints(cls.__init__)
     params = {}
@@ -37,12 +40,12 @@ def get_constructor_params(cls: Type[Any]) -> Dict[str, Any]:
         if name == 'self':
             continue  # Skip the 'self' parameter
         param_type = type_hints.get(name, Any)
-        params[name] = param_type.__name__
+        params[name] = (param_type.__name__, param_type)    
     
     return params
 
 
-def fetch_object_data() -> Dict[Type[Any],Dict[str, str]]:
+def fetch_object_data() -> Dict[Type[Any],Dict[str, Tuple[str, type]]]:
     main_directory = os.path.dirname(os.path.abspath(__file__))
     subclasses = find_subclasses_in_directory(efficio.EfficioObject, main_directory)
 
@@ -55,19 +58,26 @@ def fetch_object_data() -> Dict[Type[Any],Dict[str, str]]:
     return result
 
 
-def print_valid_classes(message: str, options: Dict[Type[Any],Dict[str, str]], only_class: str = "") -> None:
+def print_valid_classes(message: str, options: Dict[Type[Any],Dict[str, Tuple[str, type]]], only_class: str = "") -> None:
     if message:
         sys.stderr.write(f'\nError: {message}\n\n')
         sys.stderr.write('Please provide the required arguments as shown in the usage message above.\n')
 
+    unique_classes = set()
     for obj_class in options:
         obj_name = obj_class.__name__
         params = ['--object', obj_name]
         obj_params = options[obj_class]
         for param_name in obj_params:
-            params.append(f'--params {param_name}=<{obj_params[param_name]}>')
+            params.append(f'--params {param_name}=<{obj_params[param_name][0]}>')
+            unique_classes.add(obj_params[param_name][1])
         sys.stderr.write(' '.join(params))
         sys.stderr.write("\n")
+
+    sys.stderr.write('\nExample values:\n')
+    for cls in unique_classes:
+        if hasattr(cls, 'examples'):
+            sys.stderr.write(f'{cls.__name__}: {cls.examples()}\n')
 
 
 class EfficioArgumentParser(argparse.ArgumentParser):
@@ -103,18 +113,27 @@ def main(obj_name: str, obj_params: Optional[List[Tuple[str, str]]], png_file: O
     option_params = options[obj_class]
     kwargs: Dict[str, Any] = {}
     for option_name in option_params:
-        option_type = option_params[option_name]
+        option_type_str, option_type = option_params[option_name]
         if option_name not in obj_param_dict:
             print_valid_classes(f"{option_name} is required for {obj_name}", options)
             sys.exit(3)
         option_value = obj_param_dict[option_name]
 
-        if option_type == 'Measure':
+        if option_type_str == 'Measure':
             kwargs[option_name] = efficio.parse_measure(option_value)            
-        elif option_type == 'bool':
+        elif option_type_str == 'bool':
             kwargs[option_name] = str_to_bool(option_value)
+        elif option_type_str == 'int':
+            kwargs[option_name] = int(option_value)
         else:
-            kwargs[option_name] = option_value
+            # if option_type is an Enum, we need to convert the string to the enum value
+            if issubclass(option_type, Enum):
+                if option_value not in option_type.__members__:
+                    print_valid_classes(f"{option_name} is not a valid {option_type_str} value. Valid values are: {list(option_type.__members__.keys())}", options)
+                    sys.exit(5)
+                kwargs[option_name] = option_type[option_value]
+            else:
+                kwargs[option_name] = option_value
 
     obj_class = option_names[obj_name]
     instance = obj_class(**kwargs)

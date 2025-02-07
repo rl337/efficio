@@ -1,4 +1,5 @@
 import re
+from typing import List
 
 class Measure:
 
@@ -8,6 +9,10 @@ class Measure:
 
     def value(self) -> float:
         raise NotImplementedError('Measure::value()')
+    
+    @staticmethod
+    def examples() -> List[str]:
+        return ["3mm", "2in", "5 inches"]
 
 
 class StaticMeasure(Measure):
@@ -67,7 +72,7 @@ def parse_measure(value: str) -> Measure:
     if unit and unit not in canonical_units:
         raise ValueError(f"Unknown unit: '{unit}'")
 
-    canonical_unit = canonical_units.get(unit, Millimeter)  # Default to meters if no unit provided
+    canonical_unit = canonical_units.get(unit, Millimeter)  # Default to millimeters if no unit provided
 
     return canonical_unit(float_value)
 

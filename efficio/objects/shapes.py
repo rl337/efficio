@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, BinaryIO
+from typing import List, Optional, Tuple, BinaryIO
 from enum import Enum
 
 import cadquery
@@ -33,12 +33,15 @@ class Shape:
 
     def translate(self, x: float, y: float, z: float) -> 'Shape':
         raise NotImplementedError('Shape::translate()')
-
+    
     def rotate(self, x: float, y: float, z: float) -> 'Shape':
         raise NotImplementedError('Shape::rotate()')
 
     def polygon(self, sides: int, side_length: float) -> 'Shape':
         raise NotImplementedError('Shape::polygon()')
+
+    def polyline(self, points: List[Tuple[float, float]]) -> 'Shape':
+        raise NotImplementedError('Shape::polyline()')
 
     def fillet_edges(self, radius: float) -> 'Shape':
         raise NotImplementedError('Shape::fillet_edges()')
@@ -95,7 +98,7 @@ class WorkplaneShape(Shape):
     def translate(self, x: float, y: float, z: float) -> Shape:
         self._workplane = self._workplane.translate((x, y, z))
         return self
-
+    
     def rotate(self, x: float, y: float, z: float) -> 'Shape':
         if x:
             self._workplane = self._workplane.rotate((0, 0, 0), (1, 0, 0), x)
@@ -105,9 +108,22 @@ class WorkplaneShape(Shape):
             self._workplane = self._workplane.rotate((0, 0, 0), (0, 0, 1), z)
 
         return self
+    
+    def mirror(self, mirror_x: bool = False, mirror_y: bool = False, mirror_z: bool = False) -> 'Shape':
+        if mirror_x:
+            self._workplane = self._workplane.mirrorX()
+        if mirror_y:
+            self._workplane = self._workplane.mirrorY()
+        if mirror_z:
+            self._workplane = self._workplane.mirror('ZX')
+        return self
 
     def polygon(self, sides: int, side_length: float) -> Shape:
         self._workplane = self._workplane.polygon(sides,  side_length)
+        return self
+    
+    def polyline(self, points: List[Tuple[float, float]]) -> Shape:
+        self._workplane = self._workplane.polyline(points).close()
         return self
 
     def fillet_edges(self, radius: float) -> 'Shape':
