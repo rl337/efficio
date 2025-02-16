@@ -123,7 +123,7 @@ class WorkplaneShape(Shape):
         return self
     
     def polyline(self, points: List[Tuple[float, float]]) -> Shape:
-        self._workplane = self._workplane.polyline(points).close()
+        self._workplane = self._workplane.moveTo(points[0][0], points[0][1]).polyline(points).close()
         return self
 
     def fillet_edges(self, radius: float) -> 'Shape':

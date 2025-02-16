@@ -25,7 +25,7 @@ def find_subclasses_in_directory(target_class: Type[Any], directory: str) -> Lis
                     spec.loader.exec_module(module)
                     
                     for name, obj in inspect.getmembers(module, inspect.isclass):
-                        if name.startswith('Abstract'):
+                        if name.startswith('Abstract') or name.startswith('_'):
                             continue
                         if issubclass(obj, target_class) and obj is not target_class:
                             subclasses.append(obj)
@@ -125,6 +125,8 @@ def main(obj_name: str, obj_params: Optional[List[Tuple[str, str]]], png_file: O
             kwargs[option_name] = str_to_bool(option_value)
         elif option_type_str == 'int':
             kwargs[option_name] = int(option_value)
+        elif option_type_str == 'float':
+            kwargs[option_name] = float(option_value)
         else:
             # if option_type is an Enum, we need to convert the string to the enum value
             if issubclass(option_type, Enum):
