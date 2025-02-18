@@ -1,5 +1,6 @@
 import argparse
 from enum import Enum
+import logging
 import sys
 import os
 import importlib.util
@@ -169,6 +170,11 @@ class parse_obj_params(argparse.Action):
         setattr(namespace, self.dest, params)
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
+    logging.getLogger('svglib.svglib').setLevel(logging.INFO)
+    logging.getLogger('PIL.PngImagePlugin').setLevel(logging.INFO)
+
+
     parser = EfficioArgumentParser(description="Process some parameters.")
     
     parser.add_argument('--object', type=str, required=True, help='The name of the object')
