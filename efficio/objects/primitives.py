@@ -41,3 +41,14 @@ class Box(EfficioObject):
         shaft_shape = new_shape(Orientation.Front).box(width_mm, length_mm, depth_mm)
 
         return shaft_shape
+
+class Sphere(EfficioObject):
+    radius: Measure
+
+    def __init__(self, radius: Measure):
+        self.radius = radius
+
+    def shape(self) -> Optional[Shape]:
+        radius_mm = self.radius.value()
+
+        return new_shape(Orientation.Front).sphere(radius_mm)
