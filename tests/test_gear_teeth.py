@@ -56,15 +56,25 @@ class TestObjects(unittest.TestCase):
         shape = gear.shape()
 
         # 3. Assert the shape is not None
-        self.assertIsNotNone(shape, "SphericalGear shape should not be None")
+        self.assertIsNotNone(shape, "SphericalGear shape should not be None after complex boolean operations.")
 
         # 4. Assert the shape is valid
-        # Note: isValid() can be computationally intensive.
-        # For CI/CD, complex shapes might need this check to be conditional or optimized.
         if shape is not None: # Proceed only if shape exists
-            self.assertTrue(shape.isValid(), "SphericalGear shape should be valid")
+            # This validity check is crucial for the complex geometry
+            # and may be computationally intensive.
+            is_valid = shape.isValid()
+            if not is_valid:
+                # Optional: try to save the invalid shape for debugging
+                # Ensure the directory exists or use a known writable path.
+                # For automated tests, this might be better handled by CI artifacts if possible.
+                # shape.as_stl_file("invalid_spherical_gear_debug.stl")
+                pass # Allow the assertion to fail normally
+            self.assertTrue(is_valid, "SphericalGear shape should be valid after complex boolean operations.")
 
             # 5. Export to a temporary STL file
+            # Note: Visual inspection of the generated STL is highly recommended 
+            # to verify complex gear geometry, as programmatic checks for "correctness"
+            # of such intricate shapes are hard to define exhaustively.
             temp_stl_file = None
             try:
                 # Create a temporary file name
