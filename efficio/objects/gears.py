@@ -7,6 +7,7 @@ from efficio.measures import (
     Millimeter
 )
 
+from efficio.objects import primitives
 from efficio.objects.base import EfficioObject
 from efficio.objects.shapes import new_shape, Orientation, Shape
 
@@ -321,3 +322,37 @@ class RectangularGear(AbstractGear):
 class TrapezoidalGear(AbstractGear):
     def __init__(self, radius: Measure, tooth_count: int, thickness: Measure):
         super().__init__(radius, tooth_count, thickness, GearToothType.TRAPEZOIDAL)
+
+
+class _SphericalGearAxis(AbstractGear):
+    _axis: str
+
+    def __init__(self, radius: Measure, tooth_count: int, axis: str):
+        super().__init__(radius, tooth_count, Millimeter(1), GearToothType.TRAPEZOIDAL)
+        self._axis = axis
+
+    def shape(self) -> Optional[Shape]:
+        this_shape = super().shape()
+        assert this_shape is not None
+        if self._axis == "X":
+            return this_shape.revolve(180, (0, 0, 0), (0, 1, 0))
+        elif self._axis == "Y":
+            return this_shape.revolve(180, (0, 0, 0), (1, 0, 0))
+        elif self._axis == "Z":
+            return this_shape.revolve(180, (0, 0, 0), (0, 0, 1))
+        else:
+            raise ValueError(f"Invalid axis: {self._axis}")
+
+class SphericalGear(AbstractGear):
+    def __init__(self, radius: Measure, tooth_count: int):
+        super().__init__(radius, tooth_count, Millimeter(1), GearToothType.TRAPEZOIDAL)
+
+    def shape(self) -> Optional[Shape]:
+        # this_shape_x = super().shape().extract_face_from_top(clip_around_axis=False).translate(-self.get_maximum_radius().value()/2, -self.get_maximum_radius().value()/2, 0).revolve(360, (0, 0, 0), (0, 1, 0)).rotate(90, 0, 0)
+
+        wires = primitives.Box(self.get_maximum_radius(), self.get_maximum_radius(), self.get_thickness()).shape().translate(self.get_maximum_radius().value()/3, 0, 0).extract_face_from_top(self.get_maximum_radius().value())
+        return wires.revolve(360, (0, 0, 0), (0, 1, 0))
+
+        #assert this_shape.isValid()
+
+        # return this_shape_x # .union(this_shape_y)
