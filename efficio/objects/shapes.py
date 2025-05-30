@@ -4,6 +4,7 @@ from enum import Enum
 from abc import ABC, abstractmethod
 from cadquery import Vector
 import cadquery
+from cadquery.cq import CQObject # Added specific import for CQObject
 
 class Orientation(Enum):
     Front = 'XY'
@@ -21,19 +22,22 @@ class Wires:
     
     def revolve(self, angle: float, point: Tuple[float, float, float], axis: Tuple[float, float, float]) -> 'Shape':
         face = cadquery.Face.makeFromWires(self._wires)
-        
+
         # new_shape() returns an instance of Shape, which is an ABC.
         # We need to cast it to WorkplaneShape to access _workplane.
         shape_instance = new_shape(Orientation.Front)
         ws = cast(WorkplaneShape, shape_instance)
-        
+
         # Perform the revolve operation using the _workplane attribute of WorkplaneShape.
         # For a pending solid (which is what .add(face).toPending() creates),
-        # the CadQuery revolve method expects centerPoint and axisNormal.
+        # the CadQuery revolve method for sweeping a face uses axisStartPoint and axisEndPoint.
+        start_vec = cadquery.Vector(point)
+        end_vec = start_vec + cadquery.Vector(axis) # axis here is treated as a direction vector from 'point'
+
         ws._workplane = ws._workplane.add(face).toPending().revolve(
             angleDegrees=angle,
-            centerPoint=cadquery.Vector(point), # Ensure inputs are CQ Vectors if required by API
-            axisNormal=cadquery.Vector(axis)    # though CQ often handles tuples too.
+            axisStartPoint=start_vec,
+            axisEndPoint=end_vec
         )
         return ws # Return the WorkplaneShape instance
     
@@ -210,9 +214,10 @@ class WorkplaneShape(Shape):
         # center_point is the start of the axis, center_point + axis_vector is the end.
         axis_start = cadquery.Vector(center_point)
         axis_end = axis_start + cadquery.Vector(axis_vector)
-        self._workplane = self._workplane.revolve(angleDegrees=angle, 
-                                                  axisStartPoint=axis_start, 
-                                                  axisEndPoint=axis_end)
+        # Corrected keyword arguments as per MyPy's suggestion for Workplane.revolve
+        self._workplane = self._workplane.revolve(angleDegrees=angle,
+                                                  axisStart=axis_start,
+                                                  axisEnd=axis_end)
         return self
 
     def fillet_edges(self, radius: float) -> 'Shape':
@@ -267,12 +272,12 @@ class WorkplaneShape(Shape):
         wire_list = face_obj.wires()
         if not wire_list.vals(): # Check if the list of wires is empty (vals() returns list of wires)
              raise ValueError("No wires found on the top face.")
-        
+
         # Get the first/primary wire from the list.
         # CadQuery's WireList.val() often gives the first item or the "primary" one.
         # It could also return the WireList itself if it contains a single wire and is set up that way,
         # or the first wire. Let's ensure it's a cq.Wire.
-        single_wire_candidate = wire_list.val() 
+        single_wire_candidate = wire_list.val()
 
         if isinstance(single_wire_candidate, list) and len(single_wire_candidate) == 1:
             # If .val() returns a list with one wire (some CQ versions/contexts might do this)
@@ -291,8 +296,13 @@ class WorkplaneShape(Shape):
         return Wires(cleaned_wire)
 
     def bounds(self) -> Optional[Tuple[float, float, float, float, float, float]]:
-        shapes = self._workplane.vals()
-        if shapes is None or len(shapes) == 0:
+        # Explicitly type self._workplane for clarity for MyPy before calling .vals()
+        wp: cadquery.Workplane = self._workplane
+        shapes = wp.vals()
+
+        # Ensure shapes is not None and is a list before checking its length.
+        # vals() should return a list, which could be empty.
+        if not shapes: # Handles None or empty list
             return None
 
         min_x = min_y = min_z = float('inf')
@@ -327,7 +337,7 @@ class WorkplaneShape(Shape):
             # cadquery.Workplane.vals() returns a list of CQ Shape objects on the stack.
             # Using CQObject as a general type for items that could be on stack,
             # though we are primarily interested in validating cq.Shape items.
-            items_on_stack: List[cadquery.CQObject] = self._workplane.vals()
+            items_on_stack: List[CQObject] = self._workplane.vals() # Use imported CQObject
         except Exception as e:
             logging.error(f"Error accessing workplane values: {e}")
             return False # Cannot determine validity if values cannot be accessed
@@ -353,7 +363,7 @@ class WorkplaneShape(Shape):
                 continue
 
             # At this point, item is a cadquery.Shape
-            shape_cq: cadquery.Shape = item 
+            shape_cq: cadquery.Shape = item
 
             if shape_cq.isNull():
                 logging.debug(f"A CadQuery Shape on stack is null: {shape_cq}")
@@ -385,7 +395,7 @@ class WorkplaneShape(Shape):
                 # This catches errors from shape_cq.isValid() itself, if any.
                 logging.debug(f"Error during CadQuery Shape validation for {shape_cq}: {e_val}")
                 return False
-            
+
             # If we've reached here for this shape_cq, it's considered valid.
             logging.debug(f"CadQuery Shape {shape_cq} passed validation checks.")
 
