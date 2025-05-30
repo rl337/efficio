@@ -1,5 +1,7 @@
 import math
 from typing import List, Optional, Tuple, Type
+import cadquery as cq
+import logging
 
 from efficio.measures import (
     CompoundMeasure,
@@ -210,7 +212,65 @@ class AbstractGearTooth(EfficioObject):
     
     def calculate_dedendum_radius(self) -> float:
         return self.calculate_pitch_radius() - self.calculate_dedendum()
+
+
+class AbstractSphericalGearTooth(AbstractGearTooth):
+    """
+    Abstract base class for gear teeth specifically designed for spherical gears.
+    These teeth are typically defined by a 2D profile that can be revolved or swept
+    along a spherical path.
+    """
+    def get_spherical_tooth_profile_points(self) -> List[Tuple[float, float]]:
+        """
+        Returns a list of (x,y) points defining the 2D cross-sectional profile
+        of a tooth intended for a spherical gear. The profile is typically
+        revolved or used in a sweep operation to form the 3D tooth.
+
+        'x' coordinates generally represent radial distances from the gear's revolution
+        axis (or from the center of the sphere if the profile is on the sphere surface).
+        'y' coordinates represent distances along that axis (or along the tooth's
+        own axis if defined locally).
+        """
+        raise NotImplementedError(
+            "This method should be implemented by subclasses to provide a "
+            "2D profile for spherical gear teeth."
+        )
+
+
+class TrapezoidalSphericalGearTooth(AbstractTrapezoidalGearTooth, AbstractSphericalGearTooth):
+    """
+    A trapezoidal tooth profile specifically for spherical gears.
+    This class provides the concrete implementation for generating the
+    2D cross-sectional points of a trapezoidal tooth on a sphere.
+    """
+    def __init__(self, gear: 'AbstractGear'):
+        # Initialize with a default top_width_ratio, similar to _TrapezoidalGearTooth
+        AbstractTrapezoidalGearTooth.__init__(self, gear, top_width_ratio=0.5)
+        # AbstractSphericalGearTooth does not have an __init__ that needs explicit calling here,
+        # as its direct parent AbstractGearTooth.__init__ is called by AbstractTrapezoidalGearTooth.
+
+    def get_spherical_tooth_profile_points(self) -> List[Tuple[float, float]]:
+        tooth_height = self.calculate_tooth_height()
+        # calculate_tooth_width() and calculate_top_width() are inherited from AbstractTrapezoidalGearTooth
+        base_width = self.calculate_tooth_width() 
+        top_width = self.calculate_top_width()
         
+        # gear_radius is the maximum radius of the sphere (to the tooth tip).
+        gear_radius = self.gear.get_maximum_radius().value()
+
+        # r_base is the radius at the root of the tooth.
+        r_base = gear_radius - tooth_height
+
+        # Define the 2D profile points.
+        # 'x' is the radial distance from the gear center.
+        # 'y' is the half-width of the tooth profile segment.
+        points = [
+            (r_base, -base_width / 2),      # P1: Base of the tooth, one side
+            (gear_radius, -top_width / 2),  # P2: Tip of the tooth, same side
+            (gear_radius, top_width / 2),   # P3: Tip of the tooth, other side
+            (r_base, base_width / 2)        # P4: Base of the tooth, other side
+        ]
+        return points
 
 
 class AbstractTrapezoidalGearTooth(AbstractGearTooth):
@@ -284,6 +344,7 @@ class GearToothType(Enum):
     RECTANGULAR = (0, _RectangularGearTooth)
     TRAPEZOIDAL = (1, _TrapezoidalGearTooth)
     INVOLUTE = (2, _InvoluteGearTooth)
+    SPHERICAL_TRAPEZOIDAL = (3, TrapezoidalSphericalGearTooth)
 
 
 class AbstractGear(AbstractCogwheel):
@@ -345,14 +406,116 @@ class _SphericalGearAxis(AbstractGear):
 
 class SphericalGear(AbstractGear):
     def __init__(self, radius: Measure, tooth_count: int):
-        super().__init__(radius, tooth_count, Millimeter(1), GearToothType.TRAPEZOIDAL)
+        super().__init__(radius, tooth_count, Millimeter(1), GearToothType.SPHERICAL_TRAPEZOIDAL)
+
+    def _generate_single_axis_form(self) -> Optional[Shape]:
+        """
+        Generates a single-axis revolved tooth form based on the gear's
+        spherical tooth profile. This form is typically revolved around the Y-axis.
+        """
+        # 1. Instantiate the gear tooth object
+        gear_tooth_object = self._gear_tooth_type.gear_tooth_class(self)
+
+        # 2. Get the 2D tooth cross-section points
+        tooth_cross_section_points = gear_tooth_object.get_spherical_tooth_profile_points()
+
+        if not tooth_cross_section_points or len(tooth_cross_section_points) < 2:
+            logging.warning("Spherical tooth profile points are insufficient. Falling back to simple sphere.")
+            radius_val = self.get_maximum_radius().value()
+            try:
+                # Attempt to create a sphere using new_shape wrapper
+                return new_shape(Orientation.Front).sphere(radius_val)
+            except AttributeError: 
+                logging.warning("new_shape().sphere() not available, trying direct CadQuery sphere.")
+                try:
+                    # Fallback to creating sphere via CadQuery directly
+                    # Shape() constructor here assumes it can take a cq.Workplane or cq.Solid
+                    return Shape(cq.Workplane("XY").sphere(radius_val))
+                except Exception as e_cq:
+                    logging.error(f"Failed to create direct CadQuery sphere: {e_cq}")
+                    return None
+            except Exception as e_ns:
+                logging.error(f"Failed to create sphere with new_shape: {e_ns}")
+                return None
+
+        # 3. Construct the full list of points for the polyline to be revolved.
+        revolution_profile_points = []
+        revolution_profile_points.append((0, tooth_cross_section_points[0][1]))
+        revolution_profile_points.extend(tooth_cross_section_points)
+        revolution_profile_points.append((0, tooth_cross_section_points[-1][1]))
+        
+        # 4. Create the shape by revolving this profile.
+        profile_sketch = new_shape(Orientation.Front).polyline(revolution_profile_points).close()
+        revolved_shape = profile_sketch.revolve(360, (0,0,0), (0,1,0)) # Revolves around Y-axis
+        
+        return revolved_shape
 
     def shape(self) -> Optional[Shape]:
-        # this_shape_x = super().shape().extract_face_from_top(clip_around_axis=False).translate(-self.get_maximum_radius().value()/2, -self.get_maximum_radius().value()/2, 0).revolve(360, (0, 0, 0), (0, 1, 0)).rotate(90, 0, 0)
+        form_y = self._generate_single_axis_form()
+        if not form_y:
+            logging.error(f"{self.__class__.__name__}: Failed to generate base form_y for Y-axis.")
+            return None
 
-        wires = primitives.Box(self.get_maximum_radius(), self.get_maximum_radius(), self.get_thickness()).shape().translate(self.get_maximum_radius().value()/3, 0, 0).extract_face_from_top(self.get_maximum_radius().value())
-        return wires.revolve(360, (0, 0, 0), (0, 1, 0))
+        form_x = self._generate_single_axis_form()
+        if not form_x:
+            logging.error(f"{self.__class__.__name__}: Failed to generate base form_x for X-axis.")
+            # Depending on desired robustness, could return None or try to proceed without it.
+            # For now, if any component fails, the whole multi-axis shape generation fails.
+            return None 
+        # Rotate form_x: original Y-axis of the form becomes the X-axis.
+        # This is a rotation of -90 degrees around the global Z-axis.
+        form_x.rotate(x=0, y=0, z=-90) 
 
-        #assert this_shape.isValid()
+        form_z = self._generate_single_axis_form()
+        if not form_z:
+            logging.error(f"{self.__class__.__name__}: Failed to generate base form_z for Z-axis.")
+            return None
+        # Rotate form_z: original Y-axis of the form becomes the Z-axis.
+        # This is a rotation of 90 degrees around the global X-axis.
+        form_z.rotate(x=90, y=0, z=0)
+        
+        # The subsequent plan steps will involve unioning these forms.
+        # For this current step, we are verifying their generation and rotation.
+        # Returning form_y to satisfy type hints and allow testing of this stage.
+        # In a real scenario, if form_x or form_z were needed for the final shape,
+        # their successful creation and rotation would be implicitly tested by the final union.
+        # For this step, we now proceed to union them and create the mold.
 
-        # return this_shape_x # .union(this_shape_y)
+        # Union the forms.
+        # form_x's internal _workplane is modified by the union operations.
+        positive_gear_union = form_x.union(form_y) 
+        positive_gear_union = positive_gear_union.union(form_z) # Now positive_gear_union (and form_x) holds the combined shape.
+
+        # Create bounding cube
+        radius = self.get_maximum_radius().value()
+        # Ensure cube is large enough. The factor 2.2 means radius * 1.1 for each half-side from center.
+        cube_size = radius * 2.2 
+
+        # Create a new Shape object for the bounding_cube.
+        # It's assumed new_shape().box() creates a cube centered at (0,0,0) on the specified orientation's plane.
+        bounding_cube = new_shape(Orientation.Front).box(cube_size, cube_size, cube_size)
+
+        # Create the mold by cutting the unioned gear shape from the bounding cube.
+        # The object from which material is cut is `bounding_cube`.
+        # The object that defines the shape of the cut is `positive_gear_union`.
+        mold = bounding_cube.cut(positive_gear_union)
+
+        # Ensure mold generation was successful before proceeding
+        if not mold: # Or check mold.isValid() if that's more appropriate and available
+            logging.error(f"{self.__class__.__name__}: Mold generation failed.")
+            return None
+
+        # Create base sphere
+        # radius variable is already defined above from self.get_maximum_radius().value()
+        # new_shape() defaults to Orientation.Front, which is suitable for sphere centered at origin.
+        base_sphere = new_shape().sphere(radius)
+        if not base_sphere: # Or check base_sphere.isValid()
+            logging.error(f"{self.__class__.__name__}: Base sphere generation failed.")
+            return None
+
+        # Create final gear by cutting the mold from the base sphere
+        # This subtracts the negative space of the teeth (defined by the mold)
+        # from a solid sphere, leaving the positive gear shape.
+        final_gear = base_sphere.cut(mold)
+
+        return final_gear

@@ -223,7 +223,11 @@ class WorkplaneShape(Shape):
         return min_x, min_y, min_z, max_x, max_y, max_z
 
     def as_stl_file(self, filename: str) -> None:
-        cadquery.exporters.export(self._workplane, fname=filename, exportType='STL')
+        cadquery.exporters.export(self._workplane,
+                                  fname=filename,
+                                  exportType='STL',
+                                  tolerance=0.01,
+                                  angularTolerance=0.1)
 
     def as_svg_file(self, filename: str, projection: Tuple[float, float, float] = (1.0, 1.0, 1.0)) -> None:
         cadquery.exporters.export(self._workplane, fname=filename, exportType='SVG', opt={"projectionDir": projection})
