@@ -1,5 +1,5 @@
 import math
-from typing import List, Optional, Tuple, Type
+from typing import List, Optional, Tuple, Type, cast
 import cadquery as cq
 import logging
 
@@ -11,7 +11,7 @@ from efficio.measures import (
 
 from efficio.objects import primitives
 from efficio.objects.base import EfficioObject
-from efficio.objects.shapes import new_shape, Orientation, Shape
+from efficio.objects.shapes import new_shape, Orientation, Shape, WorkplaneShape
 
 from enum import Enum
 
@@ -414,8 +414,19 @@ class SphericalGear(AbstractGear):
         spherical tooth profile. This form is typically revolved around the Y-axis.
         """
         # 1. Instantiate the gear tooth object
-        gear_tooth_object = self._gear_tooth_type.gear_tooth_class(self)
+        gear_tooth_object_raw = self._gear_tooth_type.gear_tooth_class(self)
 
+        # Type checking and casting for MyPy and runtime safety
+        if not isinstance(gear_tooth_object_raw, AbstractSphericalGearTooth):
+            logging.error(
+                f"{self.__class__.__name__}: Incorrect tooth type for SphericalGear: {type(gear_tooth_object_raw)}. "
+                f"Expected a subclass of AbstractSphericalGearTooth."
+            )
+            return None
+
+        # Cast for MyPy to access the specific method, and for clarity
+        gear_tooth_object = cast(AbstractSphericalGearTooth, gear_tooth_object_raw)
+        
         # 2. Get the 2D tooth cross-section points
         tooth_cross_section_points = gear_tooth_object.get_spherical_tooth_profile_points()
 
@@ -429,20 +440,29 @@ class SphericalGear(AbstractGear):
                 logging.warning("new_shape().sphere() not available, trying direct CadQuery sphere.")
                 try:
                     # Fallback to creating sphere via CadQuery directly
-                    # Shape() constructor here assumes it can take a cq.Workplane or cq.Solid
-                    return Shape(cq.Workplane("XY").sphere(radius_val))
+                    # To properly wrap a raw CadQuery workplane:
+                    # 1. Create a WorkplaneShape instance.
+                    # 2. Assign the CadQuery workplane to its _workplane attribute.
+                    # Ensure Orientation.Front is appropriate or use a default.
+                    ws = WorkplaneShape(Orientation.Front) 
+                    ws._workplane = cq.Workplane("XY").sphere(radius_val) # Use radius_val here
+                    return ws
                 except Exception as e_cq:
-                    logging.error(f"Failed to create direct CadQuery sphere: {e_cq}")
+                    logging.error(f"Failed to create direct CadQuery sphere using WorkplaneShape: {e_cq}")
                     return None
             except Exception as e_ns:
                 logging.error(f"Failed to create sphere with new_shape: {e_ns}")
                 return None
 
         # 3. Construct the full list of points for the polyline to be revolved.
-        revolution_profile_points = []
-        revolution_profile_points.append((0, tooth_cross_section_points[0][1]))
+        # Type hint for clarity, ensuring all points are tuples of floats.
+        revolution_profile_points: List[Tuple[float, float]] = []
+        
+        # Ensure points added to define the revolution profile use floats.
+        # profile_points (from get_spherical_tooth_profile_points) already returns List[Tuple[float, float]].
+        revolution_profile_points.append((0.0, tooth_cross_section_points[0][1]))
         revolution_profile_points.extend(tooth_cross_section_points)
-        revolution_profile_points.append((0, tooth_cross_section_points[-1][1]))
+        revolution_profile_points.append((0.0, tooth_cross_section_points[-1][1]))
         
         # 4. Create the shape by revolving this profile.
         profile_sketch = new_shape(Orientation.Front).polyline(revolution_profile_points).close()

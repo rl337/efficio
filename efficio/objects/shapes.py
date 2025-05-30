@@ -1,6 +1,7 @@
 import logging
-from typing import List, Optional, Tuple, BinaryIO
+from typing import List, Optional, Tuple, BinaryIO, cast
 from enum import Enum
+from abc import ABC, abstractmethod
 from cadquery import Vector
 import cadquery
 
@@ -20,69 +21,108 @@ class Wires:
     
     def revolve(self, angle: float, point: Tuple[float, float, float], axis: Tuple[float, float, float]) -> 'Shape':
         face = cadquery.Face.makeFromWires(self._wires)
-        shape = new_shape(Orientation.Front)
-        shape._workplane = shape._workplane.add(face).toPending().revolve(angle, point, axis)
-        return shape
+        
+        # new_shape() returns an instance of Shape, which is an ABC.
+        # We need to cast it to WorkplaneShape to access _workplane.
+        shape_instance = new_shape(Orientation.Front)
+        ws = cast(WorkplaneShape, shape_instance)
+        
+        # Perform the revolve operation using the _workplane attribute of WorkplaneShape.
+        # For a pending solid (which is what .add(face).toPending() creates),
+        # the CadQuery revolve method expects centerPoint and axisNormal.
+        ws._workplane = ws._workplane.add(face).toPending().revolve(
+            angleDegrees=angle,
+            centerPoint=cadquery.Vector(point), # Ensure inputs are CQ Vectors if required by API
+            axisNormal=cadquery.Vector(axis)    # though CQ often handles tuples too.
+        )
+        return ws # Return the WorkplaneShape instance
     
 
-class Shape:
+class Shape(ABC):
 
+    @abstractmethod
     def workplane(self) -> cadquery.Workplane:
-        raise NotImplementedError('Shape::workplane()')
+        raise NotImplementedError
 
+    @abstractmethod
     def bounds(self) -> Optional[Tuple[float, float, float, float, float, float]]:
-        raise NotImplementedError('Shape::bounds()')
+        raise NotImplementedError
 
+    @abstractmethod
     def box(self, width: float, length: float, depth: float) -> 'Shape':
-        raise NotImplementedError('Shape::box()')
+        raise NotImplementedError
     
+    @abstractmethod
     def sphere(self, radius: float) -> 'Shape':
-        raise NotImplementedError('Shape::sphere()')
+        raise NotImplementedError
 
+    @abstractmethod
     def circle(self, radius: float) -> 'Shape':
-        raise NotImplementedError('Shape::circle()')
+        raise NotImplementedError
     
+    @abstractmethod
     def extrude(self, distance: float) -> 'Shape':
-        raise NotImplementedError('Shape::extrude()')
+        raise NotImplementedError
 
+    @abstractmethod
     def union(self, other: 'Shape') -> 'Shape':
-        raise NotImplementedError('Shape::union()')
+        raise NotImplementedError
 
+    @abstractmethod
     def cut(self, other: 'Shape') -> 'Shape':
-        raise NotImplementedError('Shape::cut()')
+        raise NotImplementedError
 
+    @abstractmethod
     def translate(self, x: float, y: float, z: float) -> 'Shape':
-        raise NotImplementedError('Shape::translate()')
+        raise NotImplementedError
     
+    @abstractmethod
     def rotate(self, x: float, y: float, z: float) -> 'Shape':
-        raise NotImplementedError('Shape::rotate()')
+        raise NotImplementedError
 
+    @abstractmethod
     def polygon(self, sides: int, side_length: float) -> 'Shape':
-        raise NotImplementedError('Shape::polygon()')
+        raise NotImplementedError
 
+    @abstractmethod
     def polyline(self, points: List[Tuple[float, float]]) -> 'Shape':
-        raise NotImplementedError('Shape::polyline()')
+        raise NotImplementedError
 
+    @abstractmethod
+    def close(self) -> 'Shape':
+        raise NotImplementedError
+
+    @abstractmethod
+    def revolve(self, angle: float, center_point: Tuple[float, float, float], axis_vector: Tuple[float, float, float]) -> 'Shape':
+        raise NotImplementedError
+
+    @abstractmethod
     def fillet_edges(self, radius: float) -> 'Shape':
-        raise NotImplementedError('Shape::fillet_edges()')
+        raise NotImplementedError
 
+    @abstractmethod
     def cut_from_top(self, distance_from_top: float, clone: bool = False) -> 'Shape':
-        raise NotImplementedError('Shape::cut_from_top()')
+        raise NotImplementedError
 
+    @abstractmethod
     def cut_from_bottom(self, distance_from_bottom: float, clone: bool = False) -> 'Shape':
-        raise NotImplementedError('Shape::cut_from_bottom()')
+        raise NotImplementedError
     
-    def extract_face_from_top(self) -> Wires:
-        raise NotImplementedError('Shape::extract_face_from_top()')
+    @abstractmethod
+    def extract_face_from_top(self) -> Wires: # Keeping Wires as per current structure
+        raise NotImplementedError
 
+    @abstractmethod
     def as_stl_file(self, filename: str) -> None:
-        raise NotImplementedError('Shape::as_stl_file()')
+        raise NotImplementedError
 
+    @abstractmethod
     def as_svg_file(self, filename: str, projection: Tuple[float, float, float] = (1.0, 1.0, 1.0)) -> None:
-        raise NotImplementedError('Shape::as_svg_file()')
+        raise NotImplementedError
 
+    @abstractmethod
     def isValid(self) -> bool:
-        raise NotImplementedError('Shape::isValid()')
+        raise NotImplementedError
     
 
 class WorkplaneShape(Shape):
@@ -154,7 +194,25 @@ class WorkplaneShape(Shape):
         return self
     
     def polyline(self, points: List[Tuple[float, float]]) -> Shape:
+        # The current implementation of polyline implicitly closes the shape.
+        # If a user wants an open polyline, this would need adjustment,
+        # and then close() would be more critical.
         self._workplane = self._workplane.moveTo(points[0][0], points[0][1]).polyline(points).close()
+        return self
+
+    def close(self) -> 'Shape':
+        self._workplane = self._workplane.close()
+        return self
+
+    def revolve(self, angle: float, center_point: Tuple[float, float, float], axis_vector: Tuple[float, float, float]) -> 'Shape':
+        # Assuming the workplane has a 2D sketch (wire/face) on its stack to be revolved.
+        # CadQuery's Workplane.revolve for sketches uses axisStartPoint and axisEndPoint.
+        # center_point is the start of the axis, center_point + axis_vector is the end.
+        axis_start = cadquery.Vector(center_point)
+        axis_end = axis_start + cadquery.Vector(axis_vector)
+        self._workplane = self._workplane.revolve(angleDegrees=angle, 
+                                                  axisStartPoint=axis_start, 
+                                                  axisEndPoint=axis_end)
         return self
 
     def fillet_edges(self, radius: float) -> 'Shape':
@@ -196,10 +254,41 @@ class WorkplaneShape(Shape):
             if abs(normal.dot(vp)) > 1e-6:  # Small tolerance for floating-point errors
                 raise AssertionError("Points are not planar")
     
-    def extract_face_from_top(self, clip_around_axis: bool = False) -> Wires:
-        face = self._workplane.toPending().faces(">Z").val()
-        wire = face.wires().clean()
-        return Wires(wire)
+    def extract_face_from_top(self, clip_around_axis: bool = False) -> Wires: # clip_around_axis is unused
+        # .val() should ideally return a single Shape if a unique face is selected.
+        # Perform an isinstance check for robustness.
+        face_obj = self._workplane.toPending().faces(">Z").val()
+
+        if not isinstance(face_obj, cadquery.Shape):
+            raise TypeError(f"Expected a cadquery.Shape for the top face, but got {type(face_obj)}")
+
+        # Now face_obj is known to be a cadquery.Shape (specifically, a cq.Face)
+        # .wires() returns a WireList. We need a single Wire for the Wires constructor.
+        wire_list = face_obj.wires()
+        if not wire_list.vals(): # Check if the list of wires is empty (vals() returns list of wires)
+             raise ValueError("No wires found on the top face.")
+        
+        # Get the first/primary wire from the list.
+        # CadQuery's WireList.val() often gives the first item or the "primary" one.
+        # It could also return the WireList itself if it contains a single wire and is set up that way,
+        # or the first wire. Let's ensure it's a cq.Wire.
+        single_wire_candidate = wire_list.val() 
+
+        if isinstance(single_wire_candidate, list) and len(single_wire_candidate) == 1:
+            # If .val() returns a list with one wire (some CQ versions/contexts might do this)
+            single_wire = single_wire_candidate[0]
+        elif isinstance(single_wire_candidate, cadquery.Wire):
+            single_wire = single_wire_candidate
+        else:
+            raise TypeError(f"Expected a cadquery.Wire from face.wires().val(), but got {type(single_wire_candidate)}")
+
+        if not isinstance(single_wire, cadquery.Wire):
+            # This check is somewhat redundant if the above logic is correct, but belt-and-suspenders.
+            raise TypeError(f"Extracted object for wire is not a cadquery.Wire, but {type(single_wire)}")
+
+        cleaned_wire = single_wire.clean() # clean() on a Wire returns a Wire
+
+        return Wires(cleaned_wire)
 
     def bounds(self) -> Optional[Tuple[float, float, float, float, float, float]]:
         shapes = self._workplane.vals()
@@ -233,43 +322,74 @@ class WorkplaneShape(Shape):
         cadquery.exporters.export(self._workplane, fname=filename, exportType='SVG', opt={"projectionDir": projection})
 
     def isValid(self) -> bool:
-        vals = []
-        if not hasattr(self._workplane, 'vals'):
-            vals = [self._workplane]
-        else:
-            vals = self._workplane.vals()
+        # Attempt to get all objects (Solids, Compounds, etc.) from the workplane stack
+        try:
+            # cadquery.Workplane.vals() returns a list of CQ Shape objects on the stack.
+            # Using CQObject as a general type for items that could be on stack,
+            # though we are primarily interested in validating cq.Shape items.
+            items_on_stack: List[cadquery.CQObject] = self._workplane.vals()
+        except Exception as e:
+            logging.error(f"Error accessing workplane values: {e}")
+            return False # Cannot determine validity if values cannot be accessed
 
-        for shape in vals:
+        if not items_on_stack:
+            # Whether an empty workplane is "valid" can be debated.
+            # For many practical purposes, a shape object with no geometry might be considered invalid
+            # or at least not useful. However, for the isValid() method's scope,
+            # an empty stack itself isn't necessarily an error state of the Workplane object.
+            # Let's consider it valid if it's empty but not in an error state.
+            # If subsequent operations require geometry, they will fail.
+            logging.debug("Workplane is empty. Considered valid for isValid() context.")
+            return True
 
-            # if shape is not a subclass of cadquery.Shape, it is not valid
-            if not isinstance(shape, cadquery.Shape):
-                logging.debug(f"Shape is not a cadquery.Shape: {type(shape)}")
+        for item in items_on_stack:
+            if not isinstance(item, cadquery.Shape):
+                # If the item on the stack is not a CadQuery Shape (e.g., could be a Vector, Location),
+                # we skip direct validation of it as a Shape.
+                # The presence of non-Shape items doesn't automatically make the WorkplaneShape invalid,
+                # unless the goal is to ensure it *only* contains valid, solid geometry.
+                # For now, we only validate items that are supposed to be Shapes.
+                logging.debug(f"Skipping validation for non-Shape item on stack: {type(item)}")
+                continue
+
+            # At this point, item is a cadquery.Shape
+            shape_cq: cadquery.Shape = item 
+
+            if shape_cq.isNull():
+                logging.debug(f"A CadQuery Shape on stack is null: {shape_cq}")
                 return False
             
-            if shape.isNull():
-                logging.debug(f"Shape is null: {shape}")
+            # The .Closed() check is primarily for solids.
+            # If the shape is a wire or face, it might not be "Closed" in the solid sense.
+            # However, if we expect final shapes to be valid solids, this is a reasonable check.
+            if hasattr(shape_cq, 'Closed') and not shape_cq.Closed():
+                logging.debug(f"Error: CadQuery Shape {shape_cq} is not closed.")
                 return False
             
-            # Check if the shape contains geometry
-            if not shape.Closed():
-                logging.debug("❌ Error: The shape is not closed.")
-                return False
-            
+            # Perform CadQuery's own validity check.
             try:
-                clean_shape = shape.clean()
-                if not clean_shape.isValid():
-                    logging.debug("❌ Error: The shape has self-intersections or non-manifold geometry.")
-                    return False
-            except Exception as e:
-                logging.debug(f"⚠️ Warning: Failed to clean shape due to error: {e}")
-
-            # Final Summary
-            if shape.isValid():
-                logging.debug("✅ The shape appears to be valid!")
-            else:
-                logging.debug("❌ The shape has issues that need to be fixed.")
+                if not shape_cq.isValid():
+                    logging.debug(f"Error: CadQuery Shape {shape_cq} is not valid (according to shape_cq.isValid()).")
+                    # Attempt to clean and re-check as a fallback
+                    try:
+                        logging.debug(f"Attempting to clean shape {shape_cq} and re-validate.")
+                        cleaned_shape = shape_cq.clean()
+                        if not cleaned_shape.isValid():
+                            logging.debug(f"Error: Shape {shape_cq} is still not valid after cleaning.")
+                            return False
+                        logging.debug(f"Shape {shape_cq} became valid after cleaning.")
+                    except Exception as e_clean:
+                        logging.debug(f"Error during shape cleaning or re-validation for {shape_cq}: {e_clean}")
+                        return False # If cleaning fails or cleaned version is invalid
+            except Exception as e_val:
+                # This catches errors from shape_cq.isValid() itself, if any.
+                logging.debug(f"Error during CadQuery Shape validation for {shape_cq}: {e_val}")
                 return False
+            
+            # If we've reached here for this shape_cq, it's considered valid.
+            logging.debug(f"CadQuery Shape {shape_cq} passed validation checks.")
 
+        # If all cadquery.Shape objects on the stack are valid
         return True
 
 
