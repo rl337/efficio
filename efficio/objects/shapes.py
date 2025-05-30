@@ -36,8 +36,8 @@ class Wires:
 
         ws._workplane = ws._workplane.add(face).toPending().revolve(
             angleDegrees=angle,
-            axisStartPoint=start_vec,
-            axisEndPoint=end_vec
+            axisStart=start_vec, # Changed from axisStartPoint
+            axisEnd=end_vec      # Changed from axisEndPoint
         )
         return ws # Return the WorkplaneShape instance
     
@@ -297,7 +297,7 @@ class WorkplaneShape(Shape):
 
     def bounds(self) -> Optional[Tuple[float, float, float, float, float, float]]:
         # Explicitly type self._workplane for clarity for MyPy before calling .vals()
-        wp: cadquery.Workplane = self._workplane
+        wp: cadquery.Workplane = cast(cadquery.Workplane, self._workplane)
         shapes = wp.vals()
 
         # Ensure shapes is not None and is a list before checking its length.
