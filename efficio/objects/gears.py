@@ -1,5 +1,6 @@
 import math
 from typing import List, Optional, Tuple, Type
+import cadquery as cq
 
 from efficio.measures import (
     CompoundMeasure,
@@ -210,7 +211,65 @@ class AbstractGearTooth(EfficioObject):
     
     def calculate_dedendum_radius(self) -> float:
         return self.calculate_pitch_radius() - self.calculate_dedendum()
+
+
+class AbstractSphericalGearTooth(AbstractGearTooth):
+    """
+    Abstract base class for gear teeth specifically designed for spherical gears.
+    These teeth are typically defined by a 2D profile that can be revolved or swept
+    along a spherical path.
+    """
+    def get_spherical_tooth_profile_points(self) -> List[Tuple[float, float]]:
+        """
+        Returns a list of (x,y) points defining the 2D cross-sectional profile
+        of a tooth intended for a spherical gear. The profile is typically
+        revolved or used in a sweep operation to form the 3D tooth.
+
+        'x' coordinates generally represent radial distances from the gear's revolution
+        axis (or from the center of the sphere if the profile is on the sphere surface).
+        'y' coordinates represent distances along that axis (or along the tooth's
+        own axis if defined locally).
+        """
+        raise NotImplementedError(
+            "This method should be implemented by subclasses to provide a "
+            "2D profile for spherical gear teeth."
+        )
+
+
+class TrapezoidalSphericalGearTooth(AbstractTrapezoidalGearTooth, AbstractSphericalGearTooth):
+    """
+    A trapezoidal tooth profile specifically for spherical gears.
+    This class provides the concrete implementation for generating the
+    2D cross-sectional points of a trapezoidal tooth on a sphere.
+    """
+    def __init__(self, gear: 'AbstractGear'):
+        # Initialize with a default top_width_ratio, similar to _TrapezoidalGearTooth
+        AbstractTrapezoidalGearTooth.__init__(self, gear, top_width_ratio=0.5)
+        # AbstractSphericalGearTooth does not have an __init__ that needs explicit calling here,
+        # as its direct parent AbstractGearTooth.__init__ is called by AbstractTrapezoidalGearTooth.
+
+    def get_spherical_tooth_profile_points(self) -> List[Tuple[float, float]]:
+        tooth_height = self.calculate_tooth_height()
+        # calculate_tooth_width() and calculate_top_width() are inherited from AbstractTrapezoidalGearTooth
+        base_width = self.calculate_tooth_width() 
+        top_width = self.calculate_top_width()
         
+        # gear_radius is the maximum radius of the sphere (to the tooth tip).
+        gear_radius = self.gear.get_maximum_radius().value()
+
+        # r_base is the radius at the root of the tooth.
+        r_base = gear_radius - tooth_height
+
+        # Define the 2D profile points.
+        # 'x' is the radial distance from the gear center.
+        # 'y' is the half-width of the tooth profile segment.
+        points = [
+            (r_base, -base_width / 2),      # P1: Base of the tooth, one side
+            (gear_radius, -top_width / 2),  # P2: Tip of the tooth, same side
+            (gear_radius, top_width / 2),   # P3: Tip of the tooth, other side
+            (r_base, base_width / 2)        # P4: Base of the tooth, other side
+        ]
+        return points
 
 
 class AbstractTrapezoidalGearTooth(AbstractGearTooth):
@@ -284,6 +343,7 @@ class GearToothType(Enum):
     RECTANGULAR = (0, _RectangularGearTooth)
     TRAPEZOIDAL = (1, _TrapezoidalGearTooth)
     INVOLUTE = (2, _InvoluteGearTooth)
+    SPHERICAL_TRAPEZOIDAL = (3, TrapezoidalSphericalGearTooth)
 
 
 class AbstractGear(AbstractCogwheel):
@@ -345,14 +405,58 @@ class _SphericalGearAxis(AbstractGear):
 
 class SphericalGear(AbstractGear):
     def __init__(self, radius: Measure, tooth_count: int):
-        super().__init__(radius, tooth_count, Millimeter(1), GearToothType.TRAPEZOIDAL)
+        super().__init__(radius, tooth_count, Millimeter(1), GearToothType.SPHERICAL_TRAPEZOIDAL)
 
     def shape(self) -> Optional[Shape]:
-        # this_shape_x = super().shape().extract_face_from_top(clip_around_axis=False).translate(-self.get_maximum_radius().value()/2, -self.get_maximum_radius().value()/2, 0).revolve(360, (0, 0, 0), (0, 1, 0)).rotate(90, 0, 0)
+        # 1. Instantiate the gear tooth object
+        gear_tooth_object = self._gear_tooth_type.gear_tooth_class(self)
 
-        wires = primitives.Box(self.get_maximum_radius(), self.get_maximum_radius(), self.get_thickness()).shape().translate(self.get_maximum_radius().value()/3, 0, 0).extract_face_from_top(self.get_maximum_radius().value())
-        return wires.revolve(360, (0, 0, 0), (0, 1, 0))
+        # 2. Get the 2D tooth cross-section points
+        # These points are typically (radial_distance, axial_distance_along_tooth_profile)
+        # For revolution around Y-axis, X is radial, Y is axial.
+        # Example from _TrapezoidalGearTooth: [(r_base, -bw/2), (r_tip, -tw/2), (r_tip, tw/2), (r_base, bw/2)]
+        tooth_cross_section_points = gear_tooth_object.get_spherical_tooth_profile_points()
 
-        #assert this_shape.isValid()
+        if not tooth_cross_section_points or len(tooth_cross_section_points) < 2:
+            # Not enough points to define a profile, return None or raise error
+            # For now, let's try to make a simple sphere if tooth profile is inadequate
+            # This is a fallback, ideally tooth_cross_section_points is always valid.
+            radius_val = self.get_maximum_radius().value()
+            # Attempt to create a simple sphere using new_shape, assuming it has a sphere method
+            # This part is a guess if new_shape supports .sphere() directly.
+            # If new_shape().sphere() is not available, this would need adjustment or removal.
+            try:
+                return new_shape(Orientation.Front).sphere(radius_val)
+            except AttributeError: # new_shape might not have sphere() method directly
+                 # Fallback to creating sphere via CadQuery if new_shape().sphere fails
+                return Shape(cq.Workplane().sphere(radius_val))
 
-        # return this_shape_x # .union(this_shape_y)
+
+        # 3. Construct the full list of points for the polyline to be revolved.
+        # This profile must start and end on the Y-axis (axis of revolution)
+        # to form a closed shape when revolved.
+        # The X coordinates are radial distances from the Y-axis.
+        # The Y coordinates are positions along the Y-axis.
+        
+        revolution_profile_points = []
+        # Start point on the Y-axis, aligned with the first point of the tooth cross-section
+        revolution_profile_points.append((0, tooth_cross_section_points[0][1]))
+        
+        # Add the tooth cross-section points themselves
+        revolution_profile_points.extend(tooth_cross_section_points)
+        
+        # End point on the Y-axis, aligned with the last point of the tooth cross-section
+        revolution_profile_points.append((0, tooth_cross_section_points[-1][1]))
+        
+        # Ensure the profile is closed by connecting back to the first point on the axis if needed.
+        # CadQuery's polyline().close() will connect the last point to the first.
+        # If the profile is [(0,Y1), (X2,Y2), ..., (XN,YN), (0,Y_last)], close() connects (0,Y_last) to (0,Y1).
+
+        # 4. Create the shape by revolving this profile.
+        # Orientation.Front is assumed to create a sketch in the XY plane.
+        profile_sketch = new_shape(Orientation.Front).polyline(revolution_profile_points).close()
+
+        # Revolve around the Y-axis (0,1,0)
+        revolved_shape = profile_sketch.revolve(360, (0,0,0), (0,1,0))
+        
+        return revolved_shape
