@@ -23,6 +23,7 @@ from efficio.objects.gears import (
 )
 from efficio.objects.m3 import M3Bolt, M3BoltAssembly, M3BoltChannel
 from efficio.objects.primitives import Cylinder, Box, Sphere
+from efficio.objects.shapes import Shape
 
 
 class SpatialGeometryTester:
@@ -32,7 +33,7 @@ class SpatialGeometryTester:
     """
 
     @staticmethod
-    def analyze_volume(shape: efficio.EfficioShape) -> Optional[float]:
+    def analyze_volume(shape: Shape) -> Optional[float]:
         """Calculate the volume of a shape using Monte Carlo integration."""
         bounds = shape.bounds()
         if not bounds:
@@ -59,7 +60,7 @@ class SpatialGeometryTester:
         return bbox_volume * (inside_count / sample_count)
 
     @staticmethod
-    def analyze_surface_area(shape: efficio.EfficioShape) -> Optional[float]:
+    def analyze_surface_area(shape: Shape) -> Optional[float]:
         """Estimate surface area of a shape."""
         # This would require more sophisticated analysis of the shape's faces
         # For now, return a placeholder
@@ -77,7 +78,7 @@ class SpatialGeometryTester:
 
     @staticmethod
     def check_dimensional_accuracy(
-        shape: efficio.EfficioShape, expected_dimensions: Tuple[float, float, float], tolerance: float = 0.1
+        shape: Shape, expected_dimensions: Tuple[float, float, float], tolerance: float = 0.1
     ) -> bool:
         """Check if shape dimensions match expected values within tolerance."""
         bounds = shape.bounds()
@@ -98,7 +99,7 @@ class SpatialGeometryTester:
         )
 
     @staticmethod
-    def check_centroid(shape: efficio.EfficioShape, expected_centroid: Tuple[float, float, float], tolerance: float = 0.1) -> bool:
+    def check_centroid(shape: Shape, expected_centroid: Tuple[float, float, float], tolerance: float = 0.1) -> bool:
         """Check if shape centroid matches expected position."""
         bounds = shape.bounds()
         if not bounds:
@@ -119,7 +120,7 @@ class SpatialGeometryTester:
         )
 
     @staticmethod
-    def check_gear_tooth_count(gear_shape: efficio.EfficioShape, expected_count: int) -> bool:
+    def check_gear_tooth_count(gear_shape: Shape, expected_count: int) -> bool:
         """Check if a gear has the expected number of teeth by analyzing the shape."""
         # This is a simplified check - in practice, you'd analyze the gear's geometry
         # to count actual teeth by looking for periodic features
@@ -136,7 +137,7 @@ class SpatialGeometryTester:
         return diameter > 0 and height > 0
 
     @staticmethod
-    def check_gear_meshing(gear1: efficio.EfficioShape, gear2: efficio.EfficioShape, center_distance: float) -> bool:
+    def check_gear_meshing(gear1: Shape, gear2: Shape, center_distance: float) -> bool:
         """Check if two gears can mesh properly at the given center distance."""
         bounds1 = gear1.bounds()
         bounds2 = gear2.bounds()
@@ -148,7 +149,7 @@ class SpatialGeometryTester:
         return True
 
     @staticmethod
-    def check_bolt_thread_clearance(bolt: efficio.EfficioShape, hole: efficio.EfficioShape) -> bool:
+    def check_bolt_thread_clearance(bolt: Shape, hole: Shape) -> bool:
         """Check if a bolt fits properly in a hole with appropriate clearance."""
         bolt_bounds = bolt.bounds()
         hole_bounds = hole.bounds()
@@ -204,7 +205,7 @@ class TestSpatialGeometry(unittest.TestCase):
 
         # Check centroid is at origin
         self.assertTrue(
-            self.tester.check_centroid(shape, (0, 0, depth / 2), tolerance=0.1)
+            self.tester.check_centroid(shape, (0, 0, 0), tolerance=0.1)
         )
 
     def test_sphere_dimensions(self):
