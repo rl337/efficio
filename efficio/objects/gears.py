@@ -540,10 +540,18 @@ class SphericalGear(AbstractGear):
         revolution_profile_points.append((0.0, tooth_cross_section_points[-1][1]))
 
         # 4. Create the shape by revolving this profile.
-        profile_sketch = (
-            new_shape(Orientation.Front).polyline(revolution_profile_points).close()
+        # Create a closed wire first, then revolve it
+        from typing import cast
+
+        from efficio.objects.shapes import WorkplaneShape
+
+        base_shape = cast(WorkplaneShape, new_shape(Orientation.Front))
+        base_shape._workplane = base_shape._workplane.polyline(
+            revolution_profile_points
         )
-        revolved_shape = profile_sketch.revolve(
+        # Close the polyline to create a closed wire
+        base_shape._workplane = base_shape._workplane.close()
+        revolved_shape = base_shape.revolve(
             360, (0, 0, 0), (0, 1, 0)
         )  # Revolves around Y-axis
 
