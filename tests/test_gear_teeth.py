@@ -72,7 +72,7 @@ class TestObjects(unittest.TestCase):
             self.assertTrue(is_valid, "SphericalGear shape should be valid after complex boolean operations.")
 
             # 5. Export to a temporary STL file
-            # Note: Visual inspection of the generated STL is highly recommended 
+            # Note: Visual inspection of the generated STL is highly recommended
             # to verify complex gear geometry, as programmatic checks for "correctness"
             # of such intricate shapes are hard to define exhaustively.
             temp_stl_file = None
@@ -80,11 +80,11 @@ class TestObjects(unittest.TestCase):
                 # Create a temporary file name
                 with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmpfile:
                     temp_stl_file = tmpfile.name
-                
+
                 shape.as_stl_file(temp_stl_file)
-                
+
                 # Optionally assert that the file exists
-                self.assertTrue(os.path.exists(temp_stl_file), 
+                self.assertTrue(os.path.exists(temp_stl_file),
                                 f"STL file {temp_stl_file} was not created.")
             finally:
                 # Clean up the temporary file

@@ -1,5 +1,5 @@
 import math
-from typing import List, Optional, Tuple, Type
+from typing import List, Optional, Tuple, Type # Removed cast
 import cadquery as cq
 import logging
 
@@ -11,7 +11,7 @@ from efficio.measures import (
 
 from efficio.objects import primitives
 from efficio.objects.base import EfficioObject
-from efficio.objects.shapes import new_shape, Orientation, Shape
+from efficio.objects.shapes import new_shape, Orientation, Shape, WorkplaneShape
 
 from enum import Enum
 
@@ -252,7 +252,7 @@ class TrapezoidalSphericalGearTooth(AbstractTrapezoidalGearTooth, AbstractSpheri
     def get_spherical_tooth_profile_points(self) -> List[Tuple[float, float]]:
         tooth_height = self.calculate_tooth_height()
         # calculate_tooth_width() and calculate_top_width() are inherited from AbstractTrapezoidalGearTooth
-        base_width = self.calculate_tooth_width() 
+        base_width = self.calculate_tooth_width()
         top_width = self.calculate_top_width()
         
         # gear_radius is the maximum radius of the sphere (to the tooth tip).
@@ -414,10 +414,21 @@ class SphericalGear(AbstractGear):
         spherical tooth profile. This form is typically revolved around the Y-axis.
         """
         # 1. Instantiate the gear tooth object
-        gear_tooth_object = self._gear_tooth_type.gear_tooth_class(self)
+        gear_tooth_object_raw = self._gear_tooth_type.gear_tooth_class(self)
+
+        # Type checking and casting for MyPy and runtime safety
+        if not isinstance(gear_tooth_object_raw, AbstractSphericalGearTooth):
+            logging.error(
+                f"{self.__class__.__name__}: Incorrect tooth type for SphericalGear: {type(gear_tooth_object_raw)}. "
+                f"Expected a subclass of AbstractSphericalGearTooth."
+            )
+            return None
+
+        # No cast needed here; MyPy infers the type from the isinstance check.
+        # gear_tooth_object_raw is now known to be AbstractSphericalGearTooth.
 
         # 2. Get the 2D tooth cross-section points
-        tooth_cross_section_points = gear_tooth_object.get_spherical_tooth_profile_points()
+        tooth_cross_section_points = gear_tooth_object_raw.get_spherical_tooth_profile_points()
 
         if not tooth_cross_section_points or len(tooth_cross_section_points) < 2:
             logging.warning("Spherical tooth profile points are insufficient. Falling back to simple sphere.")
@@ -425,29 +436,38 @@ class SphericalGear(AbstractGear):
             try:
                 # Attempt to create a sphere using new_shape wrapper
                 return new_shape(Orientation.Front).sphere(radius_val)
-            except AttributeError: 
+            except AttributeError:
                 logging.warning("new_shape().sphere() not available, trying direct CadQuery sphere.")
                 try:
                     # Fallback to creating sphere via CadQuery directly
-                    # Shape() constructor here assumes it can take a cq.Workplane or cq.Solid
-                    return Shape(cq.Workplane("XY").sphere(radius_val))
+                    # To properly wrap a raw CadQuery workplane:
+                    # 1. Create a WorkplaneShape instance.
+                    # 2. Assign the CadQuery workplane to its _workplane attribute.
+                    # Ensure Orientation.Front is appropriate or use a default.
+                    ws = WorkplaneShape(Orientation.Front)
+                    ws._workplane = cq.Workplane("XY").sphere(radius_val) # Use radius_val here
+                    return ws
                 except Exception as e_cq:
-                    logging.error(f"Failed to create direct CadQuery sphere: {e_cq}")
+                    logging.error(f"Failed to create direct CadQuery sphere using WorkplaneShape: {e_cq}")
                     return None
             except Exception as e_ns:
                 logging.error(f"Failed to create sphere with new_shape: {e_ns}")
                 return None
 
         # 3. Construct the full list of points for the polyline to be revolved.
-        revolution_profile_points = []
-        revolution_profile_points.append((0, tooth_cross_section_points[0][1]))
+        # Type hint for clarity, ensuring all points are tuples of floats.
+        revolution_profile_points: List[Tuple[float, float]] = []
+
+        # Ensure points added to define the revolution profile use floats.
+        # profile_points (from get_spherical_tooth_profile_points) already returns List[Tuple[float, float]].
+        revolution_profile_points.append((0.0, tooth_cross_section_points[0][1]))
         revolution_profile_points.extend(tooth_cross_section_points)
-        revolution_profile_points.append((0, tooth_cross_section_points[-1][1]))
-        
+        revolution_profile_points.append((0.0, tooth_cross_section_points[-1][1]))
+
         # 4. Create the shape by revolving this profile.
         profile_sketch = new_shape(Orientation.Front).polyline(revolution_profile_points).close()
         revolved_shape = profile_sketch.revolve(360, (0,0,0), (0,1,0)) # Revolves around Y-axis
-        
+
         return revolved_shape
 
     def shape(self) -> Optional[Shape]:
@@ -461,10 +481,10 @@ class SphericalGear(AbstractGear):
             logging.error(f"{self.__class__.__name__}: Failed to generate base form_x for X-axis.")
             # Depending on desired robustness, could return None or try to proceed without it.
             # For now, if any component fails, the whole multi-axis shape generation fails.
-            return None 
+            return None
         # Rotate form_x: original Y-axis of the form becomes the X-axis.
         # This is a rotation of -90 degrees around the global Z-axis.
-        form_x.rotate(x=0, y=0, z=-90) 
+        form_x.rotate(x=0, y=0, z=-90)
 
         form_z = self._generate_single_axis_form()
         if not form_z:
@@ -473,7 +493,7 @@ class SphericalGear(AbstractGear):
         # Rotate form_z: original Y-axis of the form becomes the Z-axis.
         # This is a rotation of 90 degrees around the global X-axis.
         form_z.rotate(x=90, y=0, z=0)
-        
+
         # The subsequent plan steps will involve unioning these forms.
         # For this current step, we are verifying their generation and rotation.
         # Returning form_y to satisfy type hints and allow testing of this stage.
@@ -483,13 +503,13 @@ class SphericalGear(AbstractGear):
 
         # Union the forms.
         # form_x's internal _workplane is modified by the union operations.
-        positive_gear_union = form_x.union(form_y) 
+        positive_gear_union = form_x.union(form_y)
         positive_gear_union = positive_gear_union.union(form_z) # Now positive_gear_union (and form_x) holds the combined shape.
 
         # Create bounding cube
         radius = self.get_maximum_radius().value()
         # Ensure cube is large enough. The factor 2.2 means radius * 1.1 for each half-side from center.
-        cube_size = radius * 2.2 
+        cube_size = radius * 2.2
 
         # Create a new Shape object for the bounding_cube.
         # It's assumed new_shape().box() creates a cube centered at (0,0,0) on the specified orientation's plane.
