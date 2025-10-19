@@ -1,9 +1,9 @@
-from efficio.objects.shapes import Shape, new_shape, Orientation
 from efficio.objects.base import EfficioObject
+from efficio.objects.shapes import EfficioShape, Orientation, new_shape
 
 __all__ = [
-    'EfficioObject',
-    'Shape',
-    'new_shape',
-    'Orientation',
+    "EfficioObject",
+    "EfficioShape",
+    "new_shape",
+    "Orientation",
 ]

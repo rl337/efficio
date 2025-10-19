@@ -1,11 +1,12 @@
 from typing import Optional
 
-from efficio.objects.shapes import Shape
+from efficio.objects.shapes import EfficioShape
+
 
 class EfficioObject:
 
-    def cut(self) -> Optional[Shape]:
+    def cut(self) -> Optional[EfficioShape]:
         return None
 
-    def shape(self) -> Optional[Shape]:
-        raise NotImplementedError('EfficioObject::shape()')
+    def shape(self) -> Optional[EfficioShape]:
+        raise NotImplementedError("EfficioObject::shape()")
