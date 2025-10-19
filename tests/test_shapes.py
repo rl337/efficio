@@ -2,12 +2,13 @@ import unittest
 
 import efficio
 
+
 class TestObjects(unittest.TestCase):
 
     def test_empty_shape(self) -> None:
         empty = efficio.new_shape()
         self.assertIsNone(empty.bounds())
-        
+
     def test_circle(self) -> None:
         obj = efficio.new_shape()
         obj.circle(10.0)
@@ -27,7 +28,7 @@ class TestObjects(unittest.TestCase):
         # min/max z
         self.assertAlmostEqual(circle_bounds[2], efficio.Millimeter(0.0).value())
         self.assertAlmostEqual(circle_bounds[5], efficio.Millimeter(0.0).value())
-       
+
     def test_cylinder(self) -> None:
         obj = efficio.new_shape()
         obj.circle(10.0)
@@ -54,10 +55,10 @@ class TestObjects(unittest.TestCase):
         self.assertIsNotNone(bolt)
 
         from efficio.objects.m3 import (
+            M3_HEAD_HEIGHT_MILLIMETERS,
             M3_HEAD_RADIUS_MILLIMETERS,
-            M3_HEAD_HEIGHT_MILLIMETERS
         )
-        
+
         bolt_shape = bolt.shape()
         assert bolt_shape is not None
         self.assertIsNotNone(bolt_shape)
@@ -78,19 +79,18 @@ class TestObjects(unittest.TestCase):
         # min/max z
         self.assertAlmostEqual(bolt_bounds[2], efficio.Millimeter(0.0).value())
         self.assertAlmostEqual(bolt_bounds[5], M3_HEAD_HEIGHT_MILLIMETERS.value() + 13)
-        
+
     def test_m3_bolt_assembly_no_clearance(self) -> None:
         bolt = efficio.M3BoltAssembly(efficio.Millimeter(13.0), False)
         self.assertIsNotNone(bolt)
 
         from efficio.objects.m3 import (
             M3_HEAD_HEIGHT_MILLIMETERS,
-            M3_NUT_WAF_MILLIMETERS,
-            M3_NUT_WAC_MILLIMETERS,
             M3_NUT_HEIGHT_MILLIMETERS,
-            M3_NUT_WAC_MILLIMETERS
+            M3_NUT_WAC_MILLIMETERS,
+            M3_NUT_WAF_MILLIMETERS,
         )
-        
+
         bolt_shape = bolt.shape()
         assert bolt_shape is not None
         self.assertIsNotNone(bolt_shape)
@@ -101,14 +101,13 @@ class TestObjects(unittest.TestCase):
         self.assertIsNotNone(bolt_bounds)
 
         # min/max x
-        self.assertAlmostEqual(bolt_bounds[0], -M3_NUT_WAC_MILLIMETERS.value()/2)
-        self.assertAlmostEqual(bolt_bounds[3], M3_NUT_WAC_MILLIMETERS.value()/2)
+        self.assertAlmostEqual(bolt_bounds[0], -M3_NUT_WAC_MILLIMETERS.value() / 2)
+        self.assertAlmostEqual(bolt_bounds[3], M3_NUT_WAC_MILLIMETERS.value() / 2)
 
         # min/max y
-        self.assertAlmostEqual(bolt_bounds[1], -M3_NUT_WAF_MILLIMETERS.value()/2)
-        self.assertAlmostEqual(bolt_bounds[4], M3_NUT_WAF_MILLIMETERS.value()/2)
+        self.assertAlmostEqual(bolt_bounds[1], -M3_NUT_WAF_MILLIMETERS.value() / 2)
+        self.assertAlmostEqual(bolt_bounds[4], M3_NUT_WAF_MILLIMETERS.value() / 2)
 
         # min/max z
         self.assertAlmostEqual(bolt_bounds[2], efficio.Millimeter(0.0).value())
         self.assertAlmostEqual(bolt_bounds[5], M3_HEAD_HEIGHT_MILLIMETERS.value() + 13)
-        
