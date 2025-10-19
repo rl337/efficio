@@ -1,0 +1,16 @@
+name: Test Workflow
+
+on:
+  push:
+    branches:
+      - 00006_ci_cd_pipeline
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Test
+        run: echo "Hello from GitHub Actions!"
