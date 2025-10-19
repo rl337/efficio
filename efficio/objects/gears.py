@@ -214,6 +214,54 @@ class AbstractGearTooth(EfficioObject):
         return self.calculate_pitch_radius() - self.calculate_dedendum()
 
 
+class AbstractTrapezoidalGearTooth(AbstractGearTooth):
+    _top_width_ratio: float
+
+    def __init__(self, gear: 'AbstractGear', top_width_ratio: float):
+        super().__init__(gear)
+        self._top_width_ratio = top_width_ratio
+
+    def calculate_pitch_radius(self) -> float:
+        return self.gear.get_maximum_radius().value() * 0.85
+    
+    def calculate_addendum(self) -> float:
+        return self.calculate_circular_pitch() * 0.7 * 2.0 / 3.0
+    
+    def calculate_dedendum(self) -> float:
+        return self.calculate_circular_pitch() * 0.7 / 3.0
+    
+    def calculate_tooth_width(self) -> float:
+        return self.calculate_chord_width() / 2
+    
+    def calculate_top_width(self) -> float:
+        return self.calculate_tooth_width() * self._top_width_ratio
+    
+    def calculate_base_radius(self) -> float:
+        """
+        The base radius is the radius of the circle that passes through the points of the base of the gear tooth.
+        It's calculated by subtracting the max radius from the height of the tooth.  We need to adjust for the fact
+        that the max circle doesn't pass through the center of the top of the tooth. 
+        We need to also adjust for the fact that the base circle doesn't pass through the center of the bottom of the tooth.
+        """
+        cos_of_pitch_angle = math.cos(self.calculate_pitch_angle() / 2)
+        top_of_tooth_radius = cos_of_pitch_angle * self.get_maximum_radius()
+        bottom_of_tooth_radius = top_of_tooth_radius - self.calculate_tooth_height()
+        bottom_of_tooth_radius_adjustment = bottom_of_tooth_radius - bottom_of_tooth_radius * cos_of_pitch_angle
+        return bottom_of_tooth_radius + bottom_of_tooth_radius_adjustment
+    
+    def shape(self) -> Optional[Shape]:
+        tooth_width_base = self.calculate_tooth_width()
+        tooth_height = self.calculate_tooth_height()
+        tooth_width_top = tooth_width_base * self._top_width_ratio
+
+        return new_shape(Orientation.Front).polyline([
+            (-tooth_width_base/2, -tooth_height/2),
+            (tooth_width_base/2, -tooth_height/2),
+            (tooth_width_top/2, tooth_height/2),
+            (-tooth_width_top/2, tooth_height/2)
+        ]).extrude(self.get_thickness()).translate(0, 0, -self.get_thickness() / 2)
+
+
 class AbstractSphericalGearTooth(AbstractGearTooth):
     """
     Abstract base class for gear teeth specifically designed for spherical gears.
@@ -273,53 +321,6 @@ class TrapezoidalSphericalGearTooth(AbstractTrapezoidalGearTooth, AbstractSpheri
         return points
 
 
-class AbstractTrapezoidalGearTooth(AbstractGearTooth):
-    _top_width_ratio: float
-
-    def __init__(self, gear: 'AbstractGear', top_width_ratio: float):
-        super().__init__(gear)
-        self._top_width_ratio = top_width_ratio
-
-    def calculate_pitch_radius(self) -> float:
-        return self.gear.get_maximum_radius().value() * 0.85
-    
-    def calculate_addendum(self) -> float:
-        return self.calculate_circular_pitch() * 0.7 * 2.0 / 3.0
-    
-    def calculate_dedendum(self) -> float:
-        return self.calculate_circular_pitch() * 0.7 / 3.0
-    
-    def calculate_tooth_width(self) -> float:
-        return self.calculate_chord_width() / 2
-    
-    def calculate_top_width(self) -> float:
-        return self.calculate_tooth_width() * self._top_width_ratio
-    
-    def calculate_base_radius(self) -> float:
-        """
-        The base radius is the radius of the circle that passes through the points of the base of the gear tooth.
-        It's calculated by subtracting the max radius from the height of the tooth.  We need to adjust for the fact
-        that the max circle doesn't pass through the center of the top of the tooth. 
-        We need to also adjust for the fact that the base circle doesn't pass through the center of the bottom of the tooth.
-        """
-        cos_of_pitch_angle = math.cos(self.calculate_pitch_angle() / 2)
-        top_of_tooth_radius = cos_of_pitch_angle * self.get_maximum_radius()
-        bottom_of_tooth_radius = top_of_tooth_radius - self.calculate_tooth_height()
-        bottom_of_tooth_radius_adjustment = bottom_of_tooth_radius - bottom_of_tooth_radius * cos_of_pitch_angle
-        return bottom_of_tooth_radius + bottom_of_tooth_radius_adjustment
-    
-    def shape(self) -> Optional[Shape]:
-        tooth_width_base = self.calculate_tooth_width()
-        tooth_height = self.calculate_tooth_height()
-        tooth_width_top = tooth_width_base * self._top_width_ratio
-
-        return new_shape(Orientation.Front).polyline([
-            (-tooth_width_base/2, -tooth_height/2),
-            (tooth_width_base/2, -tooth_height/2),
-            (tooth_width_top/2, tooth_height/2),
-            (-tooth_width_top/2, tooth_height/2)
-        ]).extrude(self.get_thickness()).translate(0, 0, -self.get_thickness() / 2)
-    
 class _TrapezoidalGearTooth(AbstractTrapezoidalGearTooth):
     def __init__(self, gear: 'AbstractGear'):
         super().__init__(gear, 0.5)
