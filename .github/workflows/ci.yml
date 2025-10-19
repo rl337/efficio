@@ -1,23 +1,17 @@
-name: CI Checks
+name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
-  build-and-test:
+  test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Build Docker image
         run: docker build -t efficio .
-
-      - name: Run checks in Docker container
+      - name: Run checks
         run: docker run -v ${{ github.workspace }}:/app efficio /app/run_checks.sh
