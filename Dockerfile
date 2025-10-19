@@ -4,8 +4,9 @@ FROM python:3.12-slim
 # Install system dependencies required for CadQuery and OpenCASCADE
 RUN apt-get update && apt-get install -y \
     build-essential \
-    libgl1-mesa-glx \
-    libglu1-mesa \
+    pkg-config \
+    libgl1-mesa-dev \
+    libglu1-mesa-dev \
     libxrender1 \
     libxext6 \
     libx11-6 \
@@ -17,26 +18,20 @@ RUN apt-get update && apt-get install -y \
     libxfixes3 \
     libxi6 \
     libxtst6 \
-    libxrandr2 \
-    libxss1 \
-    libgconf-2-4 \
     libnss3 \
-    libxss1 \
     libasound2 \
-    libxtst6 \
-    libxrandr2 \
-    libxss1 \
-    libgconf-2-4 \
-    libnss3 \
-    libxss1 \
-    libasound2 \
+    libfontconfig1 \
+    libfreetype6 \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libgdk-pixbuf-xlib-2.0-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy poetry files
-COPY pyproject.toml poetry.lock ./
+# Copy poetry files and README
+COPY pyproject.toml poetry.lock README.md ./
 
 # Install Poetry
 RUN pip install poetry
@@ -44,8 +39,8 @@ RUN pip install poetry
 # Configure Poetry
 RUN poetry config virtualenvs.create false
 
-# Install dependencies
-RUN poetry install --no-dev
+# Install dependencies (without current project)
+RUN poetry install --only=main --no-root
 
 # Copy source code
 COPY . .
