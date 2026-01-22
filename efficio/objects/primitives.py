@@ -1,11 +1,9 @@
 from typing import Optional
 
-from efficio.measures import (
-    Measure
-)
-
+from efficio.measures import Measure
 from efficio.objects.base import EfficioObject
-from efficio.objects.shapes import new_shape, Orientation, Shape
+from efficio.objects.shapes import Orientation, Shape, new_shape
+
 
 class Cylinder(EfficioObject):
     length: Measure
@@ -22,6 +20,7 @@ class Cylinder(EfficioObject):
         shaft_shape = new_shape(Orientation.Front).circle(radius_mm).extrude(length_mm)
 
         return shaft_shape
+
 
 class Box(EfficioObject):
     width: Measure
@@ -41,6 +40,7 @@ class Box(EfficioObject):
         shaft_shape = new_shape(Orientation.Front).box(width_mm, length_mm, depth_mm)
 
         return shaft_shape
+
 
 class Sphere(EfficioObject):
     radius: Measure

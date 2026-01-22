@@ -1,36 +1,44 @@
 import io
-
-from typing import Tuple, List
+from typing import List, Tuple
 
 import cadquery as cq
 from PIL import Image
-
-from svglib.svglib import svg2rlg  # type: ignore
 from reportlab.graphics import renderPM  # type: ignore
+from svglib.svglib import svg2rlg  # type: ignore
 
-def create_grid(size: int = 30, spacing: int = 10, thickness: float = 0.01) -> cq.Workplane:
+
+def create_grid(
+    size: int = 30, spacing: int = 10, thickness: float = 0.01
+) -> cq.Workplane:
     grid = cq.Workplane("XY")
     for i in range(-size, size + spacing, spacing):
         if i == 0:
-            grid = grid.moveTo(i, 0).box(2*thickness, 2*size, 2*thickness, centered=True)
+            grid = grid.moveTo(i, 0).box(
+                2 * thickness, 2 * size, 2 * thickness, centered=True
+            )
         else:
-            grid = grid.moveTo(i, 0).box(thickness, 2*size, thickness, centered=True)
+            grid = grid.moveTo(i, 0).box(thickness, 2 * size, thickness, centered=True)
     for j in range(-size, size + spacing, spacing):
         if j == 0:
-            grid = grid.moveTo(0, j).box(2*size, 2*thickness, 2*thickness, centered=True)
+            grid = grid.moveTo(0, j).box(
+                2 * size, 2 * thickness, 2 * thickness, centered=True
+            )
         else:
-            grid = grid.moveTo(0, j).box(2*size, thickness, thickness, centered=True)
+            grid = grid.moveTo(0, j).box(2 * size, thickness, thickness, centered=True)
     return grid
 
-def create_view_svg(shape: cq.Workplane, projection_dir: Tuple[float, float, float]) -> bytes:
+
+def create_view_svg(
+    shape: cq.Workplane, projection_dir: Tuple[float, float, float]
+) -> bytes:
 
     shape.add(create_grid())
 
     shapevals: List[cq.Shape] = []
     for thisshape in shape.vals():
-       if not isinstance(thisshape, cq.Shape):
-           continue
-       shapevals.append(thisshape)
+        if not isinstance(thisshape, cq.Shape):
+            continue
+        shapevals.append(thisshape)
     compound = cq.Compound.makeCompound(shapevals)
 
     svg = cq.exporters.svg.getSVG(
@@ -45,9 +53,10 @@ def create_view_svg(shape: cq.Workplane, projection_dir: Tuple[float, float, flo
             "strokeColor": (0, 0, 0),
             "hiddenColor": (0, 0, 255),
             "showAxes": True,
-        }
-    ) # type: ignore
-    return str(svg).encode('utf8')
+        },
+    )  # type: ignore
+    return str(svg).encode("utf8")
+
 
 def convert_svg_to_png(svg_bytes: bytes) -> Image.Image:
     svg_buffer = io.BytesIO(svg_bytes)
@@ -66,6 +75,7 @@ def convert_svg_to_png(svg_bytes: bytes) -> Image.Image:
     img = Image.open(png_buffer)
 
     return img
+
 
 def create_composite_image(obj: cq.Workplane) -> Image.Image:
     # Generate SVGs for different views
@@ -86,7 +96,7 @@ def create_composite_image(obj: cq.Workplane) -> Image.Image:
     composite_height = height * 2
 
     # Create a new blank image
-    composite_image = Image.new('RGB', (composite_width, composite_height), 'white')
+    composite_image = Image.new("RGB", (composite_width, composite_height), "white")
 
     # Paste each view into the composite image
     composite_image.paste(img_top, (0, 0))
