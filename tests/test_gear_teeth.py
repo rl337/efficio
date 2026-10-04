@@ -58,20 +58,44 @@ class TestObjects(unittest.TestCase):
                 tooth.calculate_base_radius(), test["expected_base_radius"]
             )
 
-    def test_spherical_gear_dimensions_follow_pitch(self) -> None:
-        gear_16 = SphericalGear(radius=Millimeter(20), tooth_count=16)
-        gear_32 = SphericalGear(radius=Millimeter(20), tooth_count=32)
+    def test_spherical_gear_surface_is_periodic_and_bounded(self) -> None:
+        gear = SphericalGear(radius=Millimeter(20), tooth_count=16)
+        root = gear._root_radius()
+        self.assertAlmostEqual(root, 18.0)
 
-        root_16, height_16, width_16, band_16 = gear_16._tooth_dimensions()
-        root_32, height_32, width_32, band_32 = gear_32._tooth_dimensions()
+        # Every sampled direction must remain inside the requested 20 mm tip
+        # envelope and outside the 18 mm root envelope.
+        for theta_index in range(1, 12):
+            theta = math.pi * theta_index / 12
+            for phi_index in range(32):
+                phi = 2 * math.pi * phi_index / 32
+                direction = (
+                    math.sin(theta) * math.cos(phi),
+                    math.sin(theta) * math.sin(phi),
+                    math.cos(theta),
+                )
+                radius = gear._surface_radius(*direction)
+                self.assertGreaterEqual(radius, root - 1e-9)
+                self.assertLessEqual(radius, 20.0 + 1e-9)
 
-        self.assertAlmostEqual(root_16, 18.0)
-        self.assertAlmostEqual(height_16, 2.0)
-        self.assertAlmostEqual(root_32, root_16)
-        self.assertAlmostEqual(height_32, height_16)
-        self.assertLess(width_32, width_16)
-        self.assertAlmostEqual(width_16, band_16)
-        self.assertAlmostEqual(width_32, band_32)
+        # A one-tooth rotation around a principal axis repeats the field.
+        phi = 0.137
+        pitch = 2 * math.pi / gear.get_tooth_count()
+        first = gear._surface_radius(math.cos(phi), math.sin(phi), 0.0)
+        repeated = gear._surface_radius(
+            math.cos(phi + pitch), math.sin(phi + pitch), 0.0
+        )
+        self.assertAlmostEqual(first, repeated, places=9)
+
+    def test_spherical_gear_orthogonal_tooth_families_are_symmetric(self) -> None:
+        gear = SphericalGear(radius=Millimeter(20), tooth_count=16)
+        sample = (0.81, 0.48, 0.33)
+        length = math.sqrt(sum(value * value for value in sample))
+        x, y, z = (value / length for value in sample)
+
+        base = gear._surface_radius(x, y, z)
+        self.assertAlmostEqual(base, gear._surface_radius(y, x, z), places=9)
+        self.assertAlmostEqual(base, gear._surface_radius(x, z, y), places=9)
 
     def test_spherical_gear_rejects_too_few_teeth(self) -> None:
         with self.assertRaises(ValueError):
