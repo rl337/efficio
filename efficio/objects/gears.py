@@ -370,9 +370,133 @@ class _RectangularGearTooth(AbstractTrapezoidalGearTooth):
         super().__init__(gear, 1.0)
 
 
+class InvoluteGearToothProfile:
+    """Reusable standard full-depth involute tooth profile.
+
+    Efficio gear constructors historically specify the outside (addendum)
+    radius.  The equivalent module is therefore derived from
+    outside_diameter = module * (tooth_count + 2).
+    """
+
+    def __init__(
+        self,
+        maximum_radius: float,
+        tooth_count: int,
+        pressure_angle: PressureAngle = PressureAngle.MODERN,
+    ):
+        if tooth_count < 4:
+            raise ValueError("Involute profiles require at least four teeth")
+        self.maximum_radius = float(maximum_radius)
+        self.tooth_count = tooth_count
+        self.pressure_angle = pressure_angle
+
+    @property
+    def module(self) -> float:
+        return 2.0 * self.maximum_radius / (self.tooth_count + 2)
+
+    @property
+    def pitch_radius(self) -> float:
+        return self.module * self.tooth_count / 2.0
+
+    @property
+    def addendum_radius(self) -> float:
+        return self.pitch_radius + self.module
+
+    @property
+    def root_radius(self) -> float:
+        return max(self.pitch_radius - 1.25 * self.module, self.module * 0.05)
+
+    @property
+    def base_radius(self) -> float:
+        return self.pitch_radius * math.cos(math.radians(self.pressure_angle.value))
+
+    @staticmethod
+    def involute_angle(parameter: float) -> float:
+        """Angular displacement along an involute: inv(t) = t - atan(t)."""
+        return parameter - math.atan(parameter)
+
+    def parameter_at_radius(self, radius: float) -> float:
+        if radius < self.base_radius:
+            raise ValueError("The involute is undefined below its base circle")
+        return math.sqrt(max((radius / self.base_radius) ** 2 - 1.0, 0.0))
+
+    def half_tooth_angle_at_pitch(self) -> float:
+        return math.pi / (2.0 * self.tooth_count)
+
+    def flank_point(self, radius: float, side: int) -> Tuple[float, float]:
+        """Return a point on the left (-1) or right (+1) involute flank."""
+        if side not in (-1, 1):
+            raise ValueError("side must be -1 or +1")
+        parameter = self.parameter_at_radius(radius)
+        pitch_parameter = self.parameter_at_radius(self.pitch_radius)
+        pitch_involute = self.involute_angle(pitch_parameter)
+        point_involute = self.involute_angle(parameter)
+        angle = side * (
+            self.half_tooth_angle_at_pitch() + pitch_involute - point_involute
+        )
+        return radius * math.cos(angle), radius * math.sin(angle)
+
+    def tooth_outline(self, flank_samples: int = 10) -> List[Tuple[float, float]]:
+        """Sample one symmetric tooth suitable for extrusion or future sweeps."""
+        if flank_samples < 2:
+            raise ValueError("flank_samples must be at least two")
+        start_radius = max(self.base_radius, self.root_radius)
+        radii = [
+            start_radius
+            + (self.addendum_radius - start_radius) * index / flank_samples
+            for index in range(flank_samples + 1)
+        ]
+        right = [self.flank_point(radius, 1) for radius in radii]
+        left = [self.flank_point(radius, -1) for radius in reversed(radii)]
+
+        right_angle = math.atan2(right[0][1], right[0][0])
+        left_angle = math.atan2(left[-1][1], left[-1][0])
+        right_root = (
+            self.root_radius * math.cos(right_angle),
+            self.root_radius * math.sin(right_angle),
+        )
+        left_root = (
+            self.root_radius * math.cos(left_angle),
+            self.root_radius * math.sin(left_angle),
+        )
+        return [right_root] + right + left + [left_root]
+
+
 class _InvoluteGearTooth(AbstractGearTooth):
+    def __init__(
+        self,
+        gear: "AbstractGear",
+        pressure_angle: PressureAngle = PressureAngle.MODERN,
+    ):
+        super().__init__(gear)
+        self.profile = InvoluteGearToothProfile(
+            gear.get_maximum_radius().value(),
+            gear.get_tooth_count(),
+            pressure_angle,
+        )
+
     def calculate_pitch_radius(self) -> float:
-        return float(self.gear.get_maximum_radius().value()) * 0.85
+        return self.profile.pitch_radius
+
+    def calculate_addendum(self) -> float:
+        return self.profile.addendum_radius - self.profile.pitch_radius
+
+    def calculate_dedendum(self) -> float:
+        return self.profile.pitch_radius - self.profile.root_radius
+
+    def calculate_tooth_width(self) -> float:
+        return self.calculate_circular_pitch() / 2.0
+
+    def calculate_base_radius(self) -> float:
+        return self.profile.root_radius
+
+    def shape(self) -> Optional[Shape]:
+        return (
+            new_shape(Orientation.Front)
+            .polyline(self.profile.tooth_outline())
+            .extrude(self.get_thickness())
+            .translate(0, 0, -self.get_thickness() / 2.0)
+        )
 
 
 class GearToothType(Enum):
@@ -445,6 +569,39 @@ class RectangularGear(AbstractGear):
 class TrapezoidalGear(AbstractGear):
     def __init__(self, radius: Measure, tooth_count: int, thickness: Measure):
         super().__init__(radius, tooth_count, thickness, GearToothType.TRAPEZOIDAL)
+
+
+class InvoluteGear(AbstractGear):
+    """Standard full-depth involute spur gear."""
+
+    def __init__(
+        self,
+        radius: Measure,
+        tooth_count: int,
+        thickness: Measure,
+        pressure_angle: PressureAngle = PressureAngle.MODERN,
+    ):
+        super().__init__(radius, tooth_count, thickness, GearToothType.INVOLUTE)
+        self.pressure_angle = pressure_angle
+
+    def shape(self) -> Optional[Shape]:
+        profile = InvoluteGearToothProfile(
+            self.get_maximum_radius().value(),
+            self.get_tooth_count(),
+            self.pressure_angle,
+        )
+        thickness = self.get_thickness().value()
+        gear = new_shape(Orientation.Front).circle(profile.root_radius).extrude(thickness)
+
+        for index in range(self.get_tooth_count()):
+            tooth = (
+                new_shape(Orientation.Front)
+                .polyline(profile.tooth_outline())
+                .extrude(thickness)
+                .rotate(0, 0, index * 360.0 / self.get_tooth_count())
+            )
+            gear = gear.union(tooth)
+        return gear
 
 
 class _SphericalGearAxis(AbstractGear):
