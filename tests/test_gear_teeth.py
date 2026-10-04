@@ -58,65 +58,65 @@ class TestObjects(unittest.TestCase):
                 tooth.calculate_base_radius(), test["expected_base_radius"]
             )
 
-    def test_spherical_gear_generation_and_export(self) -> None:
-        """
-        Tests the generation, validity, and STL export of a SphericalGear.
-        """
-        # 1. Instantiate SphericalGear
-        radius = Millimeter(20)
-        tooth_count = (
-            16  # This parameter is part of AbstractGear, used by SphericalGear
-        )
-        gear = SphericalGear(radius=radius, tooth_count=tooth_count)
+    def test_spherical_gear_dimensions_follow_pitch(self) -> None:
+        gear_16 = SphericalGear(radius=Millimeter(20), tooth_count=16)
+        gear_32 = SphericalGear(radius=Millimeter(20), tooth_count=32)
 
-        # 2. Get the shape
+        root_16, height_16, width_16, band_16 = gear_16._tooth_dimensions()
+        root_32, height_32, width_32, band_32 = gear_32._tooth_dimensions()
+
+        self.assertAlmostEqual(root_16, 18.0)
+        self.assertAlmostEqual(height_16, 2.0)
+        self.assertAlmostEqual(root_32, root_16)
+        self.assertAlmostEqual(height_32, height_16)
+        self.assertLess(width_32, width_16)
+        self.assertAlmostEqual(width_16, band_16)
+        self.assertAlmostEqual(width_32, band_32)
+
+    def test_spherical_gear_rejects_too_few_teeth(self) -> None:
+        with self.assertRaises(ValueError):
+            SphericalGear(radius=Millimeter(20), tooth_count=3)
+
+    def test_spherical_gear_generation_and_export(self) -> None:
+        """Spherical gear should be valid, toothed, symmetric, and exportable."""
+        radius = Millimeter(20)
+        gear = SphericalGear(radius=radius, tooth_count=16)
         shape = gear.shape()
 
-        # 3. Assert the shape is not None
-        self.assertIsNotNone(
-            shape,
-            "SphericalGear shape should not be None after complex boolean operations.",
-        )
+        self.assertIsNotNone(shape)
+        if shape is None:
+            self.fail("SphericalGear unexpectedly returned no shape")
 
-        # 4. Assert the shape is valid (or at least has reasonable geometry)
-        if shape is not None:  # Proceed only if shape exists
-            # Check that the shape has reasonable bounds as a proxy for validity
-            bounds = shape.bounds()
-            self.assertIsNotNone(bounds)
-            if bounds:
-                min_x, min_y, min_z, max_x, max_y, max_z = bounds
-                # Check that the shape has reasonable dimensions
-                self.assertGreater(max_x - min_x, 0)  # Has width
-                self.assertGreater(max_y - min_y, 0)  # Has length
-                self.assertGreater(max_z - min_z, 0)  # Has height
-                # For a spherical gear, we expect it to be roughly spherical
-                # The diameter should be approximately 2 * radius
-                diameter = max(max_x - min_x, max_y - min_y, max_z - min_z)
-                expected_diameter = 2 * radius.value()
-                self.assertAlmostEqual(
-                    diameter, expected_diameter, delta=expected_diameter * 0.1
-                )
+        self.assertTrue(shape.isValid(), "Spherical gear should be valid CAD geometry")
+        bounds = shape.bounds()
+        self.assertIsNotNone(bounds)
+        if bounds is None:
+            self.fail("SphericalGear unexpectedly has no bounds")
 
-            # 5. Export to a temporary STL file
-            # Note: Visual inspection of the generated STL is highly recommended
-            # to verify complex gear geometry, as programmatic checks for "correctness"
-            # of such intricate shapes are hard to define exhaustively.
-            temp_stl_file = None
-            try:
-                # Create a temporary file name
-                with tempfile.NamedTemporaryFile(
-                    suffix=".stl", delete=False
-                ) as tmpfile:
-                    temp_stl_file = tmpfile.name
+        min_x, min_y, min_z, max_x, max_y, max_z = bounds
+        dimensions = (max_x - min_x, max_y - min_y, max_z - min_z)
 
-                shape.as_stl_file(temp_stl_file)
+        # Three orthogonal copies of the same great-circle band should produce
+        # essentially identical extents on all axes.
+        self.assertAlmostEqual(dimensions[0], dimensions[1], delta=0.05)
+        self.assertAlmostEqual(dimensions[1], dimensions[2], delta=0.05)
 
-                # Optionally assert that the file exists
-                self.assertTrue(
-                    os.path.exists(temp_stl_file),
-                    f"STL file {temp_stl_file} was not created.",
-                )
-            finally:
-                # Clean up the temporary file
-                if temp_stl_file and os.path.exists(temp_stl_file):
-                    os.remove(temp_stl_file)
+        # The requested radius is the tooth-tip radius, not the root sphere.
+        expected_diameter = 2 * radius.value()
+        for dimension in dimensions:
+            self.assertAlmostEqual(dimension, expected_diameter, delta=0.1)
+
+        # A plain fallback sphere at the root radius would only be 36 mm across.
+        self.assertGreater(max(dimensions), 39.5)
+
+        temp_stl_file = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmpfile:
+                temp_stl_file = tmpfile.name
+
+            shape.as_stl_file(temp_stl_file)
+            self.assertTrue(os.path.exists(temp_stl_file))
+            self.assertGreater(os.path.getsize(temp_stl_file), 0)
+        finally:
+            if temp_stl_file and os.path.exists(temp_stl_file):
+                os.remove(temp_stl_file)
