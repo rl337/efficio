@@ -5,7 +5,7 @@ import unittest
 
 import efficio.objects.gears
 from efficio.measures import Millimeter
-from efficio.objects.gears import SphericalGear
+from efficio.objects.gears import (\n    InvoluteGear,\n    InvoluteGearToothProfile,\n    PressureAngle,\n    SphericalGear,\n)
 
 
 class TestObjects(unittest.TestCase):
@@ -57,6 +57,67 @@ class TestObjects(unittest.TestCase):
             self.assertAlmostEqual(
                 tooth.calculate_base_radius(), test["expected_base_radius"]
             )
+
+
+    def test_involute_profile_uses_standard_full_depth_geometry(self) -> None:
+        profile = InvoluteGearToothProfile(30.0, 20, PressureAngle.MODERN)
+
+        self.assertAlmostEqual(profile.module, 30.0 / 11.0)
+        self.assertAlmostEqual(profile.pitch_radius, profile.module * 10.0)
+        self.assertAlmostEqual(profile.addendum_radius, 30.0)
+        self.assertAlmostEqual(
+            profile.base_radius,
+            profile.pitch_radius * math.cos(math.radians(20.0)),
+        )
+        self.assertAlmostEqual(
+            profile.root_radius,
+            profile.pitch_radius - 1.25 * profile.module,
+        )
+
+        right = profile.flank_point(profile.pitch_radius, 1)
+        left = profile.flank_point(profile.pitch_radius, -1)
+        self.assertAlmostEqual(right[0], left[0], places=9)
+        self.assertAlmostEqual(right[1], -left[1], places=9)
+
+        pitch_half_angle = math.atan2(right[1], right[0])
+        self.assertAlmostEqual(
+            pitch_half_angle,
+            math.pi / (2.0 * profile.tooth_count),
+            places=9,
+        )
+
+    def test_involute_spur_gear_generation_and_export(self) -> None:
+        gear = InvoluteGear(
+            radius=Millimeter(30),
+            tooth_count=20,
+            thickness=Millimeter(8),
+            pressure_angle=PressureAngle.MODERN,
+        )
+        shape = gear.shape()
+        self.assertIsNotNone(shape)
+        if shape is None:
+            self.fail("InvoluteGear unexpectedly returned no shape")
+
+        self.assertTrue(shape.isValid())
+        bounds = shape.bounds()
+        self.assertIsNotNone(bounds)
+        if bounds is None:
+            self.fail("InvoluteGear unexpectedly has no bounds")
+
+        min_x, min_y, min_z, max_x, max_y, max_z = bounds
+        self.assertAlmostEqual(max_x - min_x, 60.0, delta=0.1)
+        self.assertAlmostEqual(max_y - min_y, 60.0, delta=0.1)
+        self.assertAlmostEqual(max_z - min_z, 8.0, delta=0.01)
+
+        temp_stl_file = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmpfile:
+                temp_stl_file = tmpfile.name
+            shape.as_stl_file(temp_stl_file)
+            self.assertGreater(os.path.getsize(temp_stl_file), 0)
+        finally:
+            if temp_stl_file and os.path.exists(temp_stl_file):
+                os.remove(temp_stl_file)
 
     def test_spherical_gear_surface_is_periodic_and_bounded(self) -> None:
         gear = SphericalGear(radius=Millimeter(20), tooth_count=16)
