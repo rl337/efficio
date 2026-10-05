@@ -601,6 +601,31 @@ class InvoluteGear(AbstractGear):
                 .rotate(0, 0, index * 360.0 / self.get_tooth_count())
             )
             gear = gear.union(tooth)
+
+        # Reduce print material while preserving a continuous hub and the
+        # structural annulus that carries the tooth roots.
+        hub_radius = max(profile.module * 2.0, profile.root_radius * 0.24)
+        rim_width = max(profile.module * 1.5, 3.0)
+        hole_outer_radius = profile.root_radius - rim_width
+        hole_inner_radius = hub_radius + max(profile.module, 2.0)
+        if hole_outer_radius > hole_inner_radius:
+            hole_center_radius = (hole_inner_radius + hole_outer_radius) / 2.0
+            hole_radius = min(
+                (hole_outer_radius - hole_inner_radius) * 0.42,
+                hole_center_radius * math.sin(math.pi / 6.0) * 0.72,
+            )
+            if hole_radius >= 1.0:
+                for index in range(6):
+                    angle = 2.0 * math.pi * index / 6.0
+                    x = hole_center_radius * math.cos(angle)
+                    y = hole_center_radius * math.sin(angle)
+                    cutter = (
+                        new_shape(Orientation.Front)
+                        .circle(hole_radius)
+                        .extrude(thickness)
+                        .translate(x, y, 0)
+                    )
+                    gear = gear.cut(cutter)
         return gear
 
 
