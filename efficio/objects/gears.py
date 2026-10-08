@@ -498,9 +498,7 @@ class SphericalGear(AbstractGear):
 
     def _create_radial_tooth(self, phi: float) -> Shape:
         """Create one equatorial tooth whose extrusion axis points radially outward."""
-        root_radius, tooth_height, tangential_width, band_width = (
-            self._tooth_dimensions()
-        )
+        root_radius, tooth_height, tangential_width, band_width = self._tooth_dimensions()
         embed = tooth_height * self._TOOTH_EMBED_RATIO
         radial_depth = tooth_height + embed
         center_radius = root_radius + (tooth_height - embed) / 2
