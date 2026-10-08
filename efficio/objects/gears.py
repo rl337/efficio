@@ -476,7 +476,9 @@ class SphericalGear(AbstractGear):
 
     def __init__(self, radius: Measure, tooth_count: int):
         if tooth_count < 4:
-            raise ValueError("SphericalGear requires at least four teeth per great circle")
+            raise ValueError(
+                "SphericalGear requires at least four teeth per great circle"
+            )
         super().__init__(
             radius, tooth_count, Millimeter(1), GearToothType.SPHERICAL_TRAPEZOIDAL
         )
