@@ -615,6 +615,7 @@ class InvoluteGear(AbstractGear):
         rim_width = max(profile.module * 1.5, 3.0)
         hole_outer_radius = profile.root_radius - rim_width
         hole_inner_radius = hub_radius + max(profile.module, 2.0)
+        actual_hole_outer_radius = 0.0
         if hole_outer_radius > hole_inner_radius:
             hole_center_radius = (hole_inner_radius + hole_outer_radius) / 2.0
             hole_radius = min(
@@ -622,6 +623,7 @@ class InvoluteGear(AbstractGear):
                 hole_center_radius * math.sin(math.pi / 6.0) * 0.72,
             )
             if hole_radius >= 1.0:
+                actual_hole_outer_radius = hole_center_radius + hole_radius
                 for index in range(6):
                     angle = 2.0 * math.pi * index / 6.0
                     x = hole_center_radius * math.cos(angle)
@@ -638,12 +640,12 @@ class InvoluteGear(AbstractGear):
         # and the lightening holes.  Small gears opt out automatically.
         if self.engrave_identity:
             style = GearMarkingStyle()
-            marking_radius = profile.root_radius - max(profile.module * 0.65, 1.5)
-            inner_edge = marking_radius - style.maker_height / 2.0 - style.stroke_width
-            outer_edge = marking_radius + style.maker_height / 2.0 + style.stroke_width
+            marking_radius = profile.root_radius - style.maker_height / 2.0 - 0.4
+            inner_edge = marking_radius - style.maker_height / 2.0 - style.stroke_width / 2.0
+            outer_edge = marking_radius + style.maker_height / 2.0 + style.stroke_width / 2.0
             if (
                 thickness > style.depth
-                and inner_edge > hole_outer_radius
+                and inner_edge > actual_hole_outer_radius + 0.2
                 and outer_edge < profile.root_radius
             ):
                 marker = GearFaceMarker(thickness=thickness, style=style)
