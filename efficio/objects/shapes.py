@@ -432,11 +432,19 @@ class WorkplaneShape(Shape):
                 logging.debug(f"A CadQuery Shape on stack is null: {shape_cq}")
                 return False
 
-            # The .Closed() check is primarily for solids.
-            # If the shape is a wire or face, it might not be "Closed" in the solid sense.
-            # However, if we expect final shapes to be valid solids, this is a reasonable check.
-            if hasattr(shape_cq, "Closed") and not shape_cq.Closed():
-                logging.debug(f"Error: CadQuery Shape {shape_cq} is not closed.")
+            # Closed() is meaningful for wires/faces. For Solids and Compounds from
+            # boolean ops or tessellated shells, Closed() can be False even when
+            # CadQuery/OCCT consider the shape valid—so defer to isValid() below.
+            shape_type = shape_cq.ShapeType()
+            if (
+                hasattr(shape_cq, "Closed")
+                and not shape_cq.Closed()
+                and shape_type not in ("Solid", "Compound")
+            ):
+                logging.debug(
+                    f"Error: CadQuery Shape {shape_cq} is not closed "
+                    f"(ShapeType={shape_type})."
+                )
                 return False
 
             # Perform CadQuery's own validity check.
