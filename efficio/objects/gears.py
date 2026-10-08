@@ -534,11 +534,16 @@ class SphericalGear(AbstractGear):
         root_radius, _, _, _ = self._tooth_dimensions()
         result = new_shape(Orientation.Front).sphere(root_radius)
 
-        xy_band = self._generate_great_circle_band()
-        xz_band = self._generate_great_circle_band().rotate(90, 0, 0)
-        yz_band = self._generate_great_circle_band().rotate(0, 90, 0)
+        # Fuse each tooth directly to the core. A union of disconnected teeth
+        # forms a compound, whose subsequent boolean fusion can be invalid.
+        pitch_angle = 2 * math.pi / self.get_tooth_count()
+        for index in range(self.get_tooth_count()):
+            for x_angle, y_angle in ((0, 0), (90, 0), (0, 90)):
+                rotated = self._create_radial_tooth(index * pitch_angle)
+                rotated.rotate(x_angle, y_angle, 0)
+                result = result.union(rotated)
 
-        return result.union(xy_band).union(xz_band).union(yz_band)
+        return result
 
     def shape(self) -> Optional[Shape]:
         """Generate the spherical gear, surfacing CAD failures to the caller."""
