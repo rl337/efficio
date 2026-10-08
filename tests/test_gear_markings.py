@@ -4,7 +4,6 @@ from efficio.measures import Millimeter
 from efficio.objects.gear_markings import (
     GearArcMarking,
     GearFaceMarker,
-    GearMarkingStyle,
     standard_involute_markings,
 )
 from efficio.objects.gears import InvoluteGear, InvoluteGearToothProfile, PressureAngle
@@ -44,19 +43,6 @@ class TestGearFaceMarkings(unittest.TestCase):
         if shape is None:
             self.fail("InvoluteGear unexpectedly returned no shape")
 
-        profile = InvoluteGearToothProfile(30.0, 20, PressureAngle.MODERN)
-        marker = GearFaceMarker(
-            thickness=8.0,
-            style=GearMarkingStyle(stroke_width=0.8, depth=0.55),
-        )
-        for marking in standard_involute_markings(
-            tooth_count=20,
-            module=profile.module,
-            pressure_angle_degrees=20.0,
-            marking_radius=22.0,
-        ):
-            shape = marker.cut_arc(shape, marking)
-
         self.assertTrue(shape.isValid())
         bounds = shape.bounds()
         self.assertIsNotNone(bounds)
@@ -66,6 +52,16 @@ class TestGearFaceMarkings(unittest.TestCase):
         self.assertAlmostEqual(max_x - min_x, 60.0, delta=0.1)
         self.assertAlmostEqual(max_y - min_y, 60.0, delta=0.1)
         self.assertAlmostEqual(max_z - min_z, 8.0, delta=0.01)
+
+    def test_automatic_engraving_removes_material(self) -> None:
+        options = dict(radius=Millimeter(30), tooth_count=20, thickness=Millimeter(8))
+        marked = InvoluteGear(**options, engrave_identity=True).shape()
+        plain = InvoluteGear(**options, engrave_identity=False).shape()
+        self.assertIsNotNone(marked)
+        self.assertIsNotNone(plain)
+        self.assertTrue(marked.isValid())
+        self.assertTrue(plain.isValid())
+        self.assertLess(marked.workplane().val().Volume(), plain.workplane().val().Volume())
 
 
 if __name__ == "__main__":
