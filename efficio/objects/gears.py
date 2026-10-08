@@ -7,6 +7,11 @@ import cadquery as cq
 
 from efficio.measures import CompoundMeasure, Measure, Millimeter
 from efficio.objects import primitives
+from efficio.objects.gear_markings import (
+    GearFaceMarker,
+    GearMarkingStyle,
+    standard_involute_markings,
+)
 from efficio.objects.base import EfficioObject
 from efficio.objects.shapes import Orientation, Shape, WorkplaneShape, new_shape
 
@@ -580,9 +585,11 @@ class InvoluteGear(AbstractGear):
         tooth_count: int,
         thickness: Measure,
         pressure_angle: PressureAngle = PressureAngle.MODERN,
+        engrave_identity: bool = True,
     ):
         super().__init__(radius, tooth_count, thickness, GearToothType.INVOLUTE)
         self.pressure_angle = pressure_angle
+        self.engrave_identity = engrave_identity
 
     def shape(self) -> Optional[Shape]:
         profile = InvoluteGearToothProfile(
@@ -626,6 +633,28 @@ class InvoluteGear(AbstractGear):
                         .translate(x, y, 0)
                     )
                     gear = gear.cut(cutter)
+
+        # Leave a printable, uninterrupted annulus between the tooth roots
+        # and the lightening holes.  Small gears opt out automatically.
+        if self.engrave_identity:
+            style = GearMarkingStyle()
+            marking_radius = profile.root_radius - max(profile.module * 0.65, 1.5)
+            inner_edge = marking_radius - style.maker_height / 2.0 - style.stroke_width
+            outer_edge = marking_radius + style.maker_height / 2.0 + style.stroke_width
+            if (
+                thickness > style.depth
+                and inner_edge > hole_outer_radius
+                and outer_edge < profile.root_radius
+            ):
+                marker = GearFaceMarker(thickness=thickness, style=style)
+                for marking in standard_involute_markings(
+                    tooth_count=self.get_tooth_count(),
+                    module=profile.module,
+                    pressure_angle_degrees=self.pressure_angle.value,
+                    marking_radius=marking_radius,
+                    style=style,
+                ):
+                    gear = marker.cut_arc(gear, marking)
         return gear
 
 
