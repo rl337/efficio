@@ -44,7 +44,7 @@ fi
 
 # 2. Code formatting with Black
 echo "🔍 Running Black code formatting check..."
-if poetry run black --check .; then
+if poetry run black --check --diff .; then
     print_status "Black formatting check passed"
 else
     print_error "Black formatting check failed. Run 'poetry run black .' to fix formatting issues"
