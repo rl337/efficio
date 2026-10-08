@@ -640,7 +640,7 @@ class InvoluteGear(AbstractGear):
         # and the lightening holes.  Small gears opt out automatically.
         if self.engrave_identity:
             style = GearMarkingStyle()
-            marking_radius = profile.root_radius - style.maker_height / 2.0 - 0.4
+            marking_radius = profile.root_radius - style.maker_height / 2.0 - 0.6
             inner_edge = marking_radius - style.maker_height / 2.0 - style.stroke_width / 2.0
             outer_edge = marking_radius + style.maker_height / 2.0 + style.stroke_width / 2.0
             if (
