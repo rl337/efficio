@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 00014_implement_reusable_involute_tooth_profile_and_spur_gear]
   pull_request:
     branches: [main]
 
