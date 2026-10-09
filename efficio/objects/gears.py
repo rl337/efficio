@@ -468,126 +468,83 @@ class _SphericalGearAxis(AbstractGear):
 
 
 class SphericalGear(AbstractGear):
+    """A sphere with three orthogonal, pitch-driven toothed great-circle bands."""
+
+    _TOOTH_HEIGHT_RATIO = 0.10
+    _TOOTH_DUTY_CYCLE = 0.45
+    _TOOTH_EMBED_RATIO = 0.25
+
     def __init__(self, radius: Measure, tooth_count: int):
+        if tooth_count < 4:
+            raise ValueError(
+                "SphericalGear requires at least four teeth per great circle"
+            )
         super().__init__(
             radius, tooth_count, Millimeter(1), GearToothType.SPHERICAL_TRAPEZOIDAL
         )
 
-    def _create_spherical_tooth(
-        self, radius: float, height: float, width_angle: float, theta: float, phi: float
-    ) -> Optional[Shape]:
-        """
-        Creates a single tooth on the sphere surface using spherical coordinates.
+    def _tooth_dimensions(self) -> Tuple[float, float, float, float]:
+        """Return root radius, tooth height, tangential width, and band width."""
+        tip_radius = self.get_maximum_radius().value()
+        pitch_angle = 2 * math.pi / self.get_tooth_count()
 
-        Args:
-            radius: Sphere radius
-            height: Tooth height (radial distance from sphere surface)
-            width_angle: Angular width of the tooth
-            theta: Polar angle (0 to π, where π/2 is equator)
-            phi: Azimuthal angle (0 to 2π)
-        """
-        import math
+        tooth_height = tip_radius * self._TOOTH_HEIGHT_RATIO
+        root_radius = tip_radius - tooth_height
+        tooth_width_angle = pitch_angle * self._TOOTH_DUTY_CYCLE
+        tangential_width = 2 * root_radius * math.sin(tooth_width_angle / 2)
 
-        # Convert spherical to Cartesian coordinates for tooth center
-        x_center = radius * math.sin(theta) * math.cos(phi)
-        y_center = radius * math.sin(theta) * math.sin(phi)
-        z_center = radius * math.cos(theta)
+        # A square footprint keeps the three great-circle bands comparable while
+        # still making tooth spacing entirely dependent on angular pitch.
+        band_width = tangential_width
+        return root_radius, tooth_height, tangential_width, band_width
 
-        # Create tooth as a small box oriented toward the sphere center
-        tooth_size = radius * 0.05  # Small tooth size
+    def _create_radial_tooth(self, phi: float) -> Shape:
+        """Create one equatorial tooth whose extrusion axis points radially outward."""
+        dimensions = self._tooth_dimensions()
+        root_radius, tooth_height, tangential_width, band_width = dimensions
+        embed = tooth_height * self._TOOTH_EMBED_RATIO
+        radial_depth = tooth_height + embed
+        center_radius = root_radius + (tooth_height - embed) / 2
 
-        # Create tooth box
-        tooth = new_shape(Orientation.Front).box(tooth_size, tooth_size, height)
-
-        # Position tooth on sphere surface
-        tooth = tooth.translate(x_center, y_center, z_center)
-
-        return tooth
-
-    def _generate_spherical_teeth(self) -> Optional[Shape]:
-        """
-        Generates teeth directly on a sphere surface using proper spherical coordinates.
-        This approach avoids complex boolean operations and creates clean geometry.
-        """
-        import math
-        from typing import cast
-
-        from efficio.objects.shapes import WorkplaneShape
-
-        radius_val = self.get_maximum_radius().value()
-        tooth_count = self.get_tooth_count()
-
-        # Calculate tooth parameters
-        tooth_height = radius_val * 0.1  # 10% of radius
-        tooth_width_angle = (
-            2 * math.pi / (tooth_count * 2)
-        )  # Half the angle between teeth
-
-        # Create base sphere
-        base_sphere = new_shape(Orientation.Front).sphere(radius_val)
-
-        # Generate teeth using spherical coordinates
-        teeth_shapes = []
-
-        # Create teeth in rings around the sphere
-        # Ring 1: Around the equator (z=0)
-        for i in range(tooth_count):
-            angle = 2 * math.pi * i / tooth_count
-            tooth = self._create_spherical_tooth(
-                radius_val,
-                tooth_height,
-                tooth_width_angle,
-                math.pi / 2,
-                angle,  # theta=90° (equator), phi varies
+        # A box is born with its depth along +Z. Rotating +90 degrees around Y
+        # makes that depth radial at phi=0; the Z rotation then follows the
+        # great circle while preserving tangential orientation.
+        phi_degrees = math.degrees(phi)
+        return (
+            new_shape(Orientation.Front)
+            .box(band_width, tangential_width, radial_depth)
+            .rotate(0, 90, phi_degrees)
+            .translate(
+                center_radius * math.cos(phi),
+                center_radius * math.sin(phi),
+                0,
             )
-            if tooth:
-                teeth_shapes.append(tooth)
+        )
 
-        # Ring 2: Above equator
-        for i in range(tooth_count):
-            angle = 2 * math.pi * i / tooth_count
-            tooth = self._create_spherical_tooth(
-                radius_val,
-                tooth_height,
-                tooth_width_angle,
-                math.pi / 2 - math.pi / 6,
-                angle,  # 30° above equator
-            )
-            if tooth:
-                teeth_shapes.append(tooth)
+    def _generate_great_circle_band(self) -> Shape:
+        """Generate one complete toothed band around the XY great circle."""
+        band = self._create_radial_tooth(0)
+        pitch_angle = 2 * math.pi / self.get_tooth_count()
+        for index in range(1, self.get_tooth_count()):
+            band = band.union(self._create_radial_tooth(index * pitch_angle))
+        return band
 
-        # Ring 3: Below equator
-        for i in range(tooth_count):
-            angle = 2 * math.pi * i / tooth_count
-            tooth = self._create_spherical_tooth(
-                radius_val,
-                tooth_height,
-                tooth_width_angle,
-                math.pi / 2 + math.pi / 6,
-                angle,  # 30° below equator
-            )
-            if tooth:
-                teeth_shapes.append(tooth)
+    def _generate_spherical_teeth(self) -> Shape:
+        """Generate three mutually orthogonal toothed great-circle bands."""
+        root_radius, _, _, _ = self._tooth_dimensions()
+        result = new_shape(Orientation.Front).sphere(root_radius)
 
-        # Union all teeth with the base sphere
-        if not teeth_shapes:
-            return base_sphere
-
-        result = base_sphere
-        for tooth in teeth_shapes:
-            result = result.union(tooth)
+        # Fuse each tooth directly to the core. A union of disconnected teeth
+        # forms a compound, whose subsequent boolean fusion can be invalid.
+        pitch_angle = 2 * math.pi / self.get_tooth_count()
+        for index in range(self.get_tooth_count()):
+            for x_angle, y_angle in ((0, 0), (90, 0), (0, 90)):
+                rotated = self._create_radial_tooth(index * pitch_angle)
+                rotated.rotate(x_angle, y_angle, 0)
+                result = result.union(rotated)
 
         return result
 
     def shape(self) -> Optional[Shape]:
-        """
-        Generate the complete spherical gear with teeth.
-        Uses a simplified approach that creates clean, printable geometry.
-        """
-        try:
-            return self._generate_spherical_teeth()
-        except Exception as e:
-            logging.error(f"Failed to generate spherical gear: {e}")
-            # Fallback to simple sphere
-            radius_val = self.get_maximum_radius().value()
-            return new_shape(Orientation.Front).sphere(radius_val)
+        """Generate the spherical gear, surfacing CAD failures to the caller."""
+        return self._generate_spherical_teeth()
