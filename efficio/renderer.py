@@ -33,14 +33,20 @@ def _shape_values(shape: cq.Workplane) -> List[cq.Shape]:
     return [value for value in shape.vals() if isinstance(value, cq.Shape)]
 
 
-def _bounds(shape: cq.Workplane) -> Optional[Tuple[float, float, float, float, float, float]]:
+def _bounds(
+    shape: cq.Workplane,
+) -> Optional[Tuple[float, float, float, float, float, float]]:
     values = _shape_values(shape)
     if not values:
         return None
     boxes = [value.BoundingBox() for value in values]
     return (
-        min(box.xmin for box in boxes), min(box.ymin for box in boxes), min(box.zmin for box in boxes),
-        max(box.xmax for box in boxes), max(box.ymax for box in boxes), max(box.zmax for box in boxes),
+        min(box.xmin for box in boxes),
+        min(box.ymin for box in boxes),
+        min(box.zmin for box in boxes),
+        max(box.xmax for box in boxes),
+        max(box.ymax for box in boxes),
+        max(box.zmax for box in boxes),
     )
 
 
@@ -49,9 +55,13 @@ def _nice_grid_spacing(extent: float) -> float:
         return 10.0
     raw = extent / 8.0
     exponent = math.floor(math.log10(raw))
-    scale = 10**exponent
+    scale = float(10**exponent)
     normalized = raw / scale
-    nice = 1 if normalized <= 1 else 2 if normalized <= 2 else 5 if normalized <= 5 else 10
+    nice = (
+        1.0
+        if normalized <= 1
+        else 2.0 if normalized <= 2 else 5.0 if normalized <= 5 else 10.0
+    )
     return nice * scale
 
 
@@ -128,11 +138,27 @@ def _draw_guides(
         x = int(round(cx + index * pixel_spacing))
         y = int(round(cy + index * pixel_spacing))
         if 0 <= x < result.width:
-            draw.line((x, style.margin, x, result.height - style.margin), fill=guide, width=style.guide_width)
+            draw.line(
+                (x, style.margin, x, result.height - style.margin),
+                fill=guide,
+                width=style.guide_width,
+            )
         if 0 <= y < result.height:
-            draw.line((style.margin, y, result.width - style.margin, y), fill=guide, width=style.guide_width)
-    draw.line((int(cx), style.margin, int(cx), result.height - style.margin), fill=axis, width=style.guide_axis_width)
-    draw.line((style.margin, int(cy), result.width - style.margin, int(cy)), fill=axis, width=style.guide_axis_width)
+            draw.line(
+                (style.margin, y, result.width - style.margin, y),
+                fill=guide,
+                width=style.guide_width,
+            )
+    draw.line(
+        (int(cx), style.margin, int(cx), result.height - style.margin),
+        fill=axis,
+        width=style.guide_axis_width,
+    )
+    draw.line(
+        (style.margin, int(cy), result.width - style.margin, int(cy)),
+        fill=axis,
+        width=style.guide_axis_width,
+    )
     return result
 
 

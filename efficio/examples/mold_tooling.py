@@ -1,6 +1,6 @@
 from efficio.measures import Inch, Millimeter
 from efficio.objects.gears import SphericalGear
-from efficio.objects.mold_tooling import MoldPolarity, MoldTooling, PRUSA_MK4
+from efficio.objects.mold_tooling import PRUSA_MK4, MoldPolarity, MoldTooling
 from efficio.objects.vases import TriangularFlaskVase
 
 

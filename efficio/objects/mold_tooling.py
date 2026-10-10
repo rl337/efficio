@@ -109,14 +109,18 @@ class MoldTooling(EfficioObject):
             (bounds[2] + bounds[5]) / 2,
         )
 
-        block = new_shape(Orientation.Front).box(width, length, depth).translate(*center)
+        block = (
+            new_shape(Orientation.Front).box(width, length, depth).translate(*center)
+        )
         if self.polarity is MoldPolarity.NEGATIVE:
             return block.cut(master)
 
         # A positive silicone intermediate reproduces the master geometry.
         return master
 
-    def _cottle_dimensions(self) -> Tuple[float, float, float, Tuple[float, float, float]]:
+    def _cottle_dimensions(
+        self,
+    ) -> Tuple[float, float, float, Tuple[float, float, float]]:
         _, bounds = self._master_shape_and_bounds()
         pad = self.silicone_thickness.value()
         wall = self.cottle_wall.value()
@@ -139,8 +143,10 @@ class MoldTooling(EfficioObject):
         sections: List[ToolingSection] = []
         for index, sign in enumerate((-1, 1)):
             x_center = center[0] + sign * (width / 4)
-            shell = new_shape(Orientation.Front).box(half_width, length, depth).translate(
-                x_center, center[1], center[2]
+            shell = (
+                new_shape(Orientation.Front)
+                .box(half_width, length, depth)
+                .translate(x_center, center[1], center[2])
             )
 
             inner_width = max(half_width - wall, wall)

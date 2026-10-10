@@ -560,9 +560,7 @@ class SphericalGear(AbstractGear):
 
         for index in range(longitude_segments):
             following = (index + 1) % longitude_segments
-            faces.append(
-                self._triangle(rings[-1][index], south, rings[-1][following])
-            )
+            faces.append(self._triangle(rings[-1][index], south, rings[-1][following]))
 
         shell = cq.Shell.makeShell(faces)
         if not shell.Closed():
@@ -574,6 +572,7 @@ class SphericalGear(AbstractGear):
 
     def shape(self) -> Optional[Shape]:
         workplane_shape = WorkplaneShape(Orientation.Front)
-        workplane_shape._workplane = cq.Workplane("XY").newObject([self._surface_solid()])
+        workplane_shape._workplane = cq.Workplane("XY").newObject(
+            [self._surface_solid()]
+        )
         return workplane_shape
-

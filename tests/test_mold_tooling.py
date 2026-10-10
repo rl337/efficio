@@ -7,7 +7,7 @@ from efficio.examples.mold_tooling import (
     resin_spherical_gear_tooling,
 )
 from efficio.measures import Millimeter
-from efficio.objects.mold_tooling import BuildVolume, MoldPolarity, PRUSA_MK4
+from efficio.objects.mold_tooling import PRUSA_MK4, BuildVolume, MoldPolarity
 
 
 class TestMoldTooling(unittest.TestCase):

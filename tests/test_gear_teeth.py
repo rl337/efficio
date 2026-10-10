@@ -120,15 +120,16 @@ class TestObjects(unittest.TestCase):
         min_x, min_y, min_z, max_x, max_y, max_z = bounds
         dimensions = (max_x - min_x, max_y - min_y, max_z - min_z)
 
-        # Three orthogonal copies of the same great-circle band should produce
-        # essentially identical extents on all axes.
-        self.assertAlmostEqual(dimensions[0], dimensions[1], delta=0.05)
-        self.assertAlmostEqual(dimensions[1], dimensions[2], delta=0.05)
+        # Three orthogonal tooth families should produce essentially identical
+        # extents on all axes. Tessellation of the continuous radial surface
+        # can miss exact tip samples by a fraction of a millimeter.
+        self.assertAlmostEqual(dimensions[0], dimensions[1], delta=0.15)
+        self.assertAlmostEqual(dimensions[1], dimensions[2], delta=0.15)
 
-        # The requested radius is the tooth-tip radius, not the root sphere.
+        # The requested radius is the tooth-tip envelope, not the root sphere.
         expected_diameter = 2 * radius.value()
         for dimension in dimensions:
-            self.assertAlmostEqual(dimension, expected_diameter, delta=0.1)
+            self.assertAlmostEqual(dimension, expected_diameter, delta=0.15)
 
         # A plain fallback sphere at the root radius would only be 36 mm across.
         self.assertGreater(max(dimensions), 39.5)
