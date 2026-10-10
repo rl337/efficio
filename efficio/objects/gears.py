@@ -468,83 +468,111 @@ class _SphericalGearAxis(AbstractGear):
 
 
 class SphericalGear(AbstractGear):
-    """A sphere with three orthogonal, pitch-driven toothed great-circle bands."""
+    """A gear whose teeth are a continuous periodic displacement of a sphere.
+
+    Three orthogonal angular tooth families modulate the radius of the surface.
+    Unlike attaching prismatic teeth to great-circle bands, every generated
+    surface point is displaced along its local spherical normal.  Intersections
+    between the families therefore form the characteristic wave pattern of a
+    spherical gear while the requested maximum radius remains a hard envelope.
+    """
 
     _TOOTH_HEIGHT_RATIO = 0.10
-    _TOOTH_DUTY_CYCLE = 0.45
-    _TOOTH_EMBED_RATIO = 0.25
+    _LATITUDE_SEGMENTS = 48
+    _LONGITUDE_SEGMENTS_PER_TOOTH = 8
 
     def __init__(self, radius: Measure, tooth_count: int):
         if tooth_count < 4:
-            raise ValueError(
-                "SphericalGear requires at least four teeth per great circle"
-            )
+            raise ValueError("SphericalGear requires at least four teeth")
         super().__init__(
             radius, tooth_count, Millimeter(1), GearToothType.SPHERICAL_TRAPEZOIDAL
         )
 
-    def _tooth_dimensions(self) -> Tuple[float, float, float, float]:
-        """Return root radius, tooth height, tangential width, and band width."""
-        tip_radius = self.get_maximum_radius().value()
-        pitch_angle = 2 * math.pi / self.get_tooth_count()
+    def _root_radius(self) -> float:
+        return self.get_maximum_radius().value() * (1.0 - self._TOOTH_HEIGHT_RATIO)
 
-        tooth_height = tip_radius * self._TOOTH_HEIGHT_RATIO
-        root_radius = tip_radius - tooth_height
-        tooth_width_angle = pitch_angle * self._TOOTH_DUTY_CYCLE
-        tangential_width = 2 * root_radius * math.sin(tooth_width_angle / 2)
+    def _tooth_wave(self, phase: float) -> float:
+        """Smooth periodic tooth height in [0, 1] for an angular phase."""
+        return 0.5 + 0.5 * math.cos(self.get_tooth_count() * phase)
 
-        # A square footprint keeps the three great-circle bands comparable while
-        # still making tooth spacing entirely dependent on angular pitch.
-        band_width = tangential_width
-        return root_radius, tooth_height, tangential_width, band_width
+    def _surface_radius(self, x: float, y: float, z: float) -> float:
+        """Return radial surface distance for a unit direction vector."""
+        # Each atan2 is the angular coordinate around one of the three principal
+        # axes. Averaging the orthogonal families produces smooth intersections
+        # rather than stacked solids and can never exceed the requested tip radius.
+        waves = (
+            self._tooth_wave(math.atan2(y, x)),
+            self._tooth_wave(math.atan2(z, x)),
+            self._tooth_wave(math.atan2(z, y)),
+        )
+        root = self._root_radius()
+        height = self.get_maximum_radius().value() - root
+        return root + height * sum(waves) / len(waves)
 
-    def _create_radial_tooth(self, phi: float) -> Shape:
-        """Create one equatorial tooth whose extrusion axis points radially outward."""
-        dimensions = self._tooth_dimensions()
-        root_radius, tooth_height, tangential_width, band_width = dimensions
-        embed = tooth_height * self._TOOTH_EMBED_RATIO
-        radial_depth = tooth_height + embed
-        center_radius = root_radius + (tooth_height - embed) / 2
+    @staticmethod
+    def _triangle(a: cq.Vector, b: cq.Vector, c: cq.Vector) -> cq.Face:
+        wire = cq.Wire.makePolygon([a, b, c, a])
+        return cq.Face.makeFromWires(wire)
 
-        # A box is born with its depth along +Z. Rotating +90 degrees around Y
-        # makes that depth radial at phi=0; the Z rotation then follows the
-        # great circle while preserving tangential orientation.
-        phi_degrees = math.degrees(phi)
-        return (
-            new_shape(Orientation.Front)
-            .box(band_width, tangential_width, radial_depth)
-            .rotate(0, 90, phi_degrees)
-            .translate(
-                center_radius * math.cos(phi),
-                center_radius * math.sin(phi),
-                0,
-            )
+    def _surface_solid(self) -> cq.Solid:
+        """Tessellate the radial field into one watertight OpenCascade solid."""
+        latitude_segments = self._LATITUDE_SEGMENTS
+        longitude_segments = max(
+            self.get_tooth_count() * self._LONGITUDE_SEGMENTS_PER_TOOTH, 64
         )
 
-    def _generate_great_circle_band(self) -> Shape:
-        """Generate one complete toothed band around the XY great circle."""
-        band = self._create_radial_tooth(0)
-        pitch_angle = 2 * math.pi / self.get_tooth_count()
-        for index in range(1, self.get_tooth_count()):
-            band = band.union(self._create_radial_tooth(index * pitch_angle))
-        return band
+        north_radius = self._surface_radius(0.0, 0.0, 1.0)
+        south_radius = self._surface_radius(0.0, 0.0, -1.0)
+        north = cq.Vector(0.0, 0.0, north_radius)
+        south = cq.Vector(0.0, 0.0, -south_radius)
 
-    def _generate_spherical_teeth(self) -> Shape:
-        """Generate three mutually orthogonal toothed great-circle bands."""
-        root_radius, _, _, _ = self._tooth_dimensions()
-        result = new_shape(Orientation.Front).sphere(root_radius)
+        rings: List[List[cq.Vector]] = []
+        for latitude_index in range(1, latitude_segments):
+            theta = math.pi * latitude_index / latitude_segments
+            sin_theta = math.sin(theta)
+            cos_theta = math.cos(theta)
+            ring: List[cq.Vector] = []
+            for longitude_index in range(longitude_segments):
+                phi = 2 * math.pi * longitude_index / longitude_segments
+                direction = (
+                    sin_theta * math.cos(phi),
+                    sin_theta * math.sin(phi),
+                    cos_theta,
+                )
+                radius = self._surface_radius(*direction)
+                ring.append(cq.Vector(*(radius * value for value in direction)))
+            rings.append(ring)
 
-        # Fuse each tooth directly to the core. A union of disconnected teeth
-        # forms a compound, whose subsequent boolean fusion can be invalid.
-        pitch_angle = 2 * math.pi / self.get_tooth_count()
-        for index in range(self.get_tooth_count()):
-            for x_angle, y_angle in ((0, 0), (90, 0), (0, 90)):
-                rotated = self._create_radial_tooth(index * pitch_angle)
-                rotated.rotate(x_angle, y_angle, 0)
-                result = result.union(rotated)
+        faces: List[cq.Face] = []
+        for index in range(longitude_segments):
+            following = (index + 1) % longitude_segments
+            faces.append(self._triangle(north, rings[0][index], rings[0][following]))
 
-        return result
+        for ring_index in range(len(rings) - 1):
+            upper = rings[ring_index]
+            lower = rings[ring_index + 1]
+            for index in range(longitude_segments):
+                following = (index + 1) % longitude_segments
+                a, b = upper[index], upper[following]
+                c, d = lower[following], lower[index]
+                faces.append(self._triangle(a, c, b))
+                faces.append(self._triangle(a, d, c))
+
+        for index in range(longitude_segments):
+            following = (index + 1) % longitude_segments
+            faces.append(self._triangle(rings[-1][index], south, rings[-1][following]))
+
+        shell = cq.Shell.makeShell(faces)
+        if not shell.Closed():
+            raise ValueError("Spherical gear surface did not form a closed shell")
+        solid = cq.Solid.makeSolid(shell)
+        if not solid.isValid():
+            raise ValueError("Spherical gear surface did not form a valid solid")
+        return solid
 
     def shape(self) -> Optional[Shape]:
-        """Generate the spherical gear, surfacing CAD failures to the caller."""
-        return self._generate_spherical_teeth()
+        workplane_shape = WorkplaneShape(Orientation.Front)
+        workplane_shape._workplane = cq.Workplane("XY").newObject(
+            [self._surface_solid()]
+        )
+        return workplane_shape
