@@ -1,6 +1,11 @@
 from efficio.measures import Inch, Millimeter
 from efficio.objects.gears import SphericalGear
-from efficio.objects.mold_tooling import PRUSA_MK4, MoldPolarity, MoldTooling
+from efficio.objects.mold_tooling import (
+    PRUSA_MK4,
+    CottlePurpose,
+    MoldPolarity,
+    MoldTooling,
+)
 from efficio.objects.vases import TriangularFlaskVase
 
 
@@ -13,6 +18,7 @@ def resin_spherical_gear_tooling() -> MoldTooling:
         silicone_thickness=Millimeter(8),
         cottle_wall=Millimeter(4),
         printer=PRUSA_MK4,
+        purpose=CottlePurpose.BOTH,
     )
 
 
@@ -30,4 +36,5 @@ def plaster_triangular_flask_tooling() -> MoldTooling:
         silicone_thickness=Millimeter(10),
         cottle_wall=Millimeter(4),
         printer=PRUSA_MK4,
+        purpose=CottlePurpose.MOLD_SUPPORT,
     )
