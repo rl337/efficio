@@ -49,6 +49,7 @@ Thumbs.db
 # Project specific
 *.whl
 *.png
+*.pdf
 *.stl
 *.svg
 output.*
