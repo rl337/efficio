@@ -7,9 +7,9 @@ modelling kernel.
 
 import math
 from dataclasses import dataclass
-from typing import Iterable, List, Sequence, Tuple
+from typing import List
 
-Point = Tuple[float, float]
+from efficio.objects.powertrain.planar import Point, polar
 
 
 def involute_function(angle: float) -> float:
@@ -91,25 +91,21 @@ class InvoluteGearGeometry:
             centre = tooth * self.angular_pitch
 
             if self.root_radius < flank_start:
-                points.append(_polar(self.root_radius, centre - psi_start))
+                points.append(polar(self.root_radius, centre - psi_start))
             for radius in radii:
-                points.append(
-                    _polar(radius, centre - self.half_thickness_angle(radius))
-                )
-            points.append(_polar(self.tip_radius, centre))
+                points.append(polar(radius, centre - self.half_thickness_angle(radius)))
+            points.append(polar(self.tip_radius, centre))
             for radius in reversed(radii):
-                points.append(
-                    _polar(radius, centre + self.half_thickness_angle(radius))
-                )
+                points.append(polar(radius, centre + self.half_thickness_angle(radius)))
             if self.root_radius < flank_start:
-                points.append(_polar(self.root_radius, centre + psi_start))
+                points.append(polar(self.root_radius, centre + psi_start))
 
             # Root land between this tooth and the next one.
             gap_start = centre + psi_start
             gap_end = centre + self.angular_pitch - psi_start
             for i in range(1, root_samples + 1):
                 angle = gap_start + (gap_end - gap_start) * i / (root_samples + 1)
-                points.append(_polar(self.root_radius, angle))
+                points.append(polar(self.root_radius, angle))
 
         return points
 
@@ -143,43 +139,3 @@ def mesh_phase(
     )
     pitch = 360.0 / driven_teeth
     return phase % pitch
-
-
-def _polar(radius: float, angle: float) -> Point:
-    return (radius * math.cos(angle), radius * math.sin(angle))
-
-
-def circle_points(centre: Point, radius: float, samples: int = 32) -> List[Point]:
-    return [
-        (
-            centre[0] + radius * math.cos(2 * math.pi * i / samples),
-            centre[1] + radius * math.sin(2 * math.pi * i / samples),
-        )
-        for i in range(samples)
-    ]
-
-
-def convex_hull(points: Iterable[Point]) -> List[Point]:
-    """Andrew's monotone chain; returns CCW hull without repeated end point."""
-    unique = sorted(set((round(x, 6), round(y, 6)) for x, y in points))
-    if len(unique) <= 2:
-        return list(unique)
-
-    def cross(o: Point, a: Point, b: Point) -> float:
-        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-
-    lower: List[Point] = []
-    for point in unique:
-        while len(lower) >= 2 and cross(lower[-2], lower[-1], point) <= 0:
-            lower.pop()
-        lower.append(point)
-    upper: List[Point] = []
-    for point in reversed(unique):
-        while len(upper) >= 2 and cross(upper[-2], upper[-1], point) <= 0:
-            upper.pop()
-        upper.append(point)
-    return lower[:-1] + upper[:-1]
-
-
-def distance(a: Sequence[float], b: Sequence[float]) -> float:
-    return math.hypot(a[0] - b[0], a[1] - b[1])

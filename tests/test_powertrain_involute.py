@@ -1,13 +1,18 @@
 import math
 import unittest
 
-from efficio.objects.involute import (
+from efficio.objects.powertrain.gears.involute import (
     InvoluteGearGeometry,
     centre_distance,
-    convex_hull,
-    distance,
     involute_function,
     mesh_phase,
+)
+from efficio.objects.powertrain.planar import (
+    Span,
+    convex_hull,
+    densify,
+    distance,
+    hull_of_circles,
 )
 
 
@@ -102,3 +107,22 @@ class TestPlanarHelpers(unittest.TestCase):
 
     def test_distance(self) -> None:
         self.assertAlmostEqual(distance((0, 0), (3, 4)), 5.0)
+
+    def test_hull_of_circles_covers_both_circles(self) -> None:
+        hull = hull_of_circles([((0, 0), 2.0), ((10, 0), 1.0)])
+        self.assertAlmostEqual(min(x for x, _ in hull), -2.0)
+        self.assertAlmostEqual(max(x for x, _ in hull), 11.0)
+
+    def test_densify_keeps_vertices_and_fills_edges(self) -> None:
+        square = [(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0)]
+        dense = densify(square, step=0.5)
+        self.assertEqual(len(dense), 16)
+        self.assertIn((1.0, 0.0), dense)
+
+    def test_span(self) -> None:
+        span = Span(1.0, 4.0)
+        self.assertAlmostEqual(span.length, 3.0)
+        self.assertAlmostEqual(span.centre, 2.5)
+        self.assertTrue(span.overlaps(Span(3.0, 5.0)))
+        self.assertFalse(span.overlaps(Span(4.0, 5.0)))
+        self.assertEqual(span.shifted(2.0), Span(3.0, 6.0))

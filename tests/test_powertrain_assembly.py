@@ -7,11 +7,11 @@ from efficio.__main__ import fetch_object_data
 from efficio.examples.drivetrain import RearTransaxle, engine_assembly, rear_transaxle
 from efficio.measures import Millimeter
 from efficio.objects.assembly import Assembly, PartSpec
-from efficio.objects.drivetrain import SpurGear
-from efficio.objects.drivetrain_layout import DrivetrainLayout
-from efficio.objects.fits import Process
 from efficio.objects.gears import MetricModule, PressureAngle
-from efficio.objects.involute import mesh_phase
+from efficio.objects.powertrain.engine import EngineGeometry
+from efficio.objects.powertrain.fits import Process
+from efficio.objects.powertrain.gears import SpurGear, mesh_phase
+from efficio.objects.powertrain.layout import DrivetrainLayout
 
 
 class TestDrivetrainAssembly(unittest.TestCase):
@@ -64,6 +64,11 @@ class TestDrivetrainAssembly(unittest.TestCase):
             items = {row["item"]: row for row in rows}
             self.assertEqual(items["diff_planet_gear"]["quantity"], "4")
             self.assertIn("6800 ball bearing", items)
+            bolt = items["M3 x 35 socket cap screw (planet pin)"]
+            self.assertEqual(bolt["kind"], "hardware")
+            self.assertEqual(bolt["quantity"], "4")
+            self.assertNotIn("diff_planet_pin", items)
+            self.assertNotIn("M3 x 35 socket cap screw (planet pin).stl", names)
             self.assertEqual(items["half_shaft_left"]["process"], "rod_stock")
             with open(os.path.join(directory, "BOM.md"), encoding="utf-8") as fh:
                 self.assertIn("| crank_pinion |", fh.read())
@@ -76,6 +81,26 @@ class TestEngineSweep(unittest.TestCase):
             with self.subTest(crank_angle=angle):
                 assembly = engine_assembly(layout, angle)
                 self.assertEqual(assembly.interferences(), [])
+
+    def test_other_engine_configurations_turn_freely(self) -> None:
+        for engine in (EngineGeometry(cylinders=1), EngineGeometry(cylinders=3)):
+            layout = DrivetrainLayout(engine=engine)
+            for angle in (35.0, 200.0):
+                with self.subTest(cylinders=engine.cylinders, crank_angle=angle):
+                    assembly = engine_assembly(layout, angle)
+                    self.assertEqual(assembly.interferences(), [])
+
+
+class TestVariantDrivetrain(unittest.TestCase):
+    def test_single_cylinder_transaxle_assembles_cleanly(self) -> None:
+        layout = DrivetrainLayout(
+            engine=EngineGeometry(cylinders=1),
+            crank_pinion_teeth=14,
+            idler_gear_teeth=34,
+        )
+        assembly = rear_transaxle(layout, crank_angle=17.0)
+        self.assertEqual(assembly.quantities()["piston"], 1)
+        self.assertEqual(assembly.interferences(), [])
 
 
 class TestInterferenceDetection(unittest.TestCase):
@@ -120,9 +145,12 @@ class TestRearTransaxleObject(unittest.TestCase):
         options = {cls.__name__: params for cls, params in fetch_object_data().items()}
         self.assertIn("RearTransaxle", options)
         self.assertEqual(options["RearTransaxle"]["crank_angle"][0], "float")
+        self.assertEqual(options["RearTransaxle"]["cylinders"][0], "int")
+        self.assertIn("BearingPlate", options)
+        self.assertIn("SpurGear", options)
 
     def test_composite_shape_spans_the_build(self) -> None:
-        shape = RearTransaxle(crank_angle=0.0).shape()
+        shape = RearTransaxle(crank_angle=0.0, cylinders=2).shape()
         assert shape is not None
         bounds = shape.bounds()
         assert bounds is not None
@@ -130,4 +158,6 @@ class TestRearTransaxleObject(unittest.TestCase):
         self.assertAlmostEqual(bounds[2], 0.0, delta=0.3)
         self.assertAlmostEqual(bounds[1], layout.left_wheel.start, delta=0.5)
         self.assertAlmostEqual(bounds[4], layout.right_wheel.end, delta=0.5)
-        self.assertGreater(bounds[5], layout.crank_centre[1] + layout.deck_height)
+        self.assertGreater(
+            bounds[5], layout.crank_centre[1] + layout.engine.deck_height
+        )

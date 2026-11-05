@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 import cadquery as cq
 
 from efficio.objects.base import EfficioObject
-from efficio.objects.fits import Process
+from efficio.objects.powertrain.fits import Process
 from efficio.objects.shapes import Orientation, Shape, WorkplaneShape
 
 Interference = Tuple[str, str, float]
@@ -41,6 +41,15 @@ class PartSpec:
     @property
     def cnc_profile(self) -> bool:
         return Process.CNC_PLATE in self.processes
+
+    @property
+    def purchased(self) -> bool:
+        """Bought-in parts are modelled for fit checks but not fabricated."""
+        return Process.PURCHASED in self.processes
+
+    @property
+    def fabricated_file(self) -> bool:
+        return not self.purchased and Process.ROD_STOCK not in self.processes
 
     def shape(self) -> Shape:
         result = WorkplaneShape(Orientation.Front)
@@ -165,7 +174,7 @@ class Assembly:
             rows.append(
                 {
                     "item": name,
-                    "kind": "fabricated",
+                    "kind": "hardware" if spec.purchased else "fabricated",
                     "quantity": str(quantities[name]),
                     "process": " / ".join(p.value for p in spec.processes),
                     "material": spec.material,
@@ -208,7 +217,7 @@ class Assembly:
         os.makedirs(cnc_dir, exist_ok=True)
 
         for name, spec in self.parts.items():
-            if Process.ROD_STOCK in spec.processes:
+            if not spec.fabricated_file:
                 continue
             path = os.path.join(parts_dir, f"{name}.stl")
             spec.shape().as_stl_file(path)
