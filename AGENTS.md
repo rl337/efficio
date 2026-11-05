@@ -15,6 +15,13 @@ For isolating command line dependencies and execution of commands you will use a
 
 **Do NOT run tests or development commands directly on the host system.** Use the Docker container for all development activities to ensure consistency with the CI/CD environment.
 
+## Object Definitions
+
+All efficio objects must follow the `parameterized-objects` skill (`.claude/skills/parameterized-objects/SKILL.md`):
+- define objects by their parameters, in a submodule categorized by what they are;
+- fix values only where a standard defines them (e.g. an M3 bolt fixes thread and head but not length);
+- create fully concrete parts (e.g. an M3 x 10 bolt) only at the use site that needs them.
+
 ## Testing and Coverage
 
 When adding or removing code it is essential that every functional edit to the codebase have corresponding tests. These tests, when possible should use the testing frameworks of the platform, for example in python it should be pytest.  
