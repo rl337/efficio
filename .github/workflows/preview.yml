@@ -9,7 +9,7 @@ jobs:
   render:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build Docker image
         run: docker build -t efficio .
       - name: Render drivetrain and sub-assemblies with the efficio CLI
@@ -27,7 +27,7 @@ jobs:
           done
           render --params axle_stock=WOOD_DOWEL \
             --png /app/previews/rear_transaxle_dowel_axles.png
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: previews
           path: previews/*.png
