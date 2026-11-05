@@ -1,17 +1,23 @@
-"""Place parts in a world frame, check interference, export a fabrication kit."""
+"""Hierarchical assemblies: place parts, check interference, export a kit.
+
+An :class:`Assembly` is itself an :class:`EfficioObject`, so it can be
+rendered on its own, nested inside a larger assembly, and given a
+``preview_color`` that every part inside it inherits.
+"""
 
 import csv
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple
 
 import cadquery as cq
 
-from efficio.objects.base import EfficioObject
+from efficio.objects.base import DEFAULT_PREVIEW_COLOR, Color, EfficioObject
 from efficio.objects.powertrain.fits import Process
 from efficio.objects.shapes import Orientation, Shape, WorkplaneShape
 
 Interference = Tuple[str, str, float]
+PreviewPart = Tuple[str, cq.Shape, Color]
 
 
 @dataclass
@@ -71,19 +77,74 @@ class PlacedPart:
     label: str
     part: str
     solid: cq.Shape
+    owner: "Assembly"
+    spec: PartSpec
+
+    def preview_color(self, current: Color = DEFAULT_PREVIEW_COLOR) -> Color:
+        """The part's own colour, else its assembly's, else ``current``."""
+        if self.spec.obj.preview_color is not None:
+            return self.spec.obj.preview_color
+        return self.owner.resolved_preview_color(current)
 
 
-class Assembly:
-    def __init__(self, name: str):
+class Assembly(EfficioObject):
+    """A named group of placed parts and nested sub-assemblies."""
+
+    def __init__(self, name: str, preview_color: Optional[Color] = None):
         self.name = name
+        self.preview_color = preview_color
+        self.parent = None
         self.parts: Dict[str, PartSpec] = {}
         self.instances: List[PlacedPart] = []
         self.hardware: List[HardwareItem] = []
+        self.children: List["Assembly"] = []
+
+    # ------------------------------------------------------------ hierarchy
+    def add_subassembly(self, child: "Assembly") -> "Assembly":
+        if child.parent is not None:
+            raise ValueError(f"{child.name} already belongs to an assembly")
+        child.parent = self
+        self.children.append(child)
+        return child
+
+    def walk(self) -> Iterator["Assembly"]:
+        """This assembly and every nested sub-assembly, depth first."""
+        yield self
+        for child in self.children:
+            yield from child.walk()
+
+    def find(self, name: str) -> "Assembly":
+        for assembly in self.walk():
+            if assembly.name == name:
+                return assembly
+        raise KeyError(f"no sub-assembly named {name!r} in {self.name}")
+
+    def all_instances(self) -> List[PlacedPart]:
+        return [p for a in self.walk() for p in a.instances]
+
+    def all_parts(self) -> Dict[str, PartSpec]:
+        merged: Dict[str, PartSpec] = {}
+        for assembly in self.walk():
+            for name, spec in assembly.parts.items():
+                if name in merged and merged[name] is not spec:
+                    raise ValueError(f"part name {name!r} is used twice")
+                merged[name] = spec
+        return merged
+
+    def path(self) -> str:
+        names: List[str] = []
+        node: Optional[EfficioObject] = self
+        while isinstance(node, Assembly):
+            names.append(node.name)
+            node = node.parent
+        return " / ".join(reversed(names))
 
     def register(self, spec: PartSpec) -> PartSpec:
         if spec.name in self.parts:
             return self.parts[spec.name]
         self.parts[spec.name] = spec
+        if spec.obj.parent is None:
+            spec.obj.parent = self
         return spec
 
     def add_hardware(self, name: str, quantity: int, notes: str = "") -> None:
@@ -115,7 +176,7 @@ class Assembly:
             solid = solid.rotate(origin, cq.Vector(0, 0, 1), spin)
             solid = solid.rotate(origin, cq.Vector(1, 0, 0), 90)
         solid = solid.translate(cq.Vector(x, y_from, z))
-        placed = PlacedPart(label, spec.name, solid)
+        placed = PlacedPart(label, spec.name, solid, self, spec)
         self.instances.append(placed)
         return placed
 
@@ -138,7 +199,7 @@ class Assembly:
         solid = solid.rotate(origin, cq.Vector(0, 1, 0), 90)  # local Z -> +X
         solid = solid.rotate(origin, cq.Vector(0, 1, 0), -angle)
         solid = solid.translate(cq.Vector(x, y, z))
-        placed = PlacedPart(label, spec.name, solid)
+        placed = PlacedPart(label, spec.name, solid, self, spec)
         self.instances.append(placed)
         return placed
 
@@ -146,28 +207,29 @@ class Assembly:
         self, spec: PartSpec, label: str, x: float, y: float, z: float
     ) -> PlacedPart:
         solid = self.register(spec).solid().translate(cq.Vector(x, y, z))
-        placed = PlacedPart(label, spec.name, solid)
+        placed = PlacedPart(label, spec.name, solid, self, spec)
         self.instances.append(placed)
         return placed
 
     def instance(self, label: str) -> PlacedPart:
-        return next(p for p in self.instances if p.label == label)
+        return next(p for p in self.all_instances() if p.label == label)
 
     def quantities(self) -> Dict[str, int]:
-        counts: Dict[str, int] = {name: 0 for name in self.parts}
-        for placed in self.instances:
+        counts: Dict[str, int] = {name: 0 for name in self.all_parts()}
+        for placed in self.all_instances():
             counts[placed.part] += 1
         return counts
 
     # --------------------------------------------------------- verification
     def interferences(self, tolerance: float = 0.05) -> List[Interference]:
-        """Pairs of placed parts whose solids overlap by more than ``tolerance``
-        cubic millimetres."""
-        boxes = [p.solid.BoundingBox() for p in self.instances]
+        """Pairs of placed parts (across all sub-assemblies) whose solids
+        overlap by more than ``tolerance`` cubic millimetres."""
+        instances = self.all_instances()
+        boxes = [p.solid.BoundingBox() for p in instances]
         found: List[Interference] = []
-        for i, a in enumerate(self.instances):
-            for j in range(i + 1, len(self.instances)):
-                b = self.instances[j]
+        for i, a in enumerate(instances):
+            for j in range(i + 1, len(instances)):
+                b = instances[j]
                 ba, bb = boxes[i], boxes[j]
                 if (
                     ba.xmax <= bb.xmin
@@ -183,50 +245,79 @@ class Assembly:
                     found.append((a.label, b.label, volume))
         return found
 
+    # -------------------------------------------------------------- preview
     def compound(self) -> cq.Compound:
-        return cq.Compound.makeCompound([p.solid for p in self.instances])
+        instances = self.all_instances()
+        if not instances:
+            raise ValueError(f"{self.name} has no parts")
+        return cq.Compound.makeCompound([p.solid for p in instances])
 
     def shape(self) -> Shape:
         result = WorkplaneShape(Orientation.Front)
         result._workplane = cq.Workplane("XY").newObject([self.compound()])
         return result
 
+    def preview_parts(
+        self, current: Color = DEFAULT_PREVIEW_COLOR
+    ) -> List[PreviewPart]:
+        """Every placed solid with its resolved preview colour."""
+        return [
+            (p.label, p.solid, p.preview_color(current)) for p in self.all_instances()
+        ]
+
+    def preview_legend(
+        self, current: Color = DEFAULT_PREVIEW_COLOR
+    ) -> List[Tuple[str, Color]]:
+        """Names and colours of the sub-assemblies (or this assembly alone)."""
+        groups = self.children or [self]
+        return [(g.name, g.resolved_preview_color(current)) for g in groups]
+
     # ---------------------------------------------------------------- export
     def bom_rows(self) -> List[Dict[str, str]]:
+        """BOM grouped by the sub-assembly that owns each item."""
         rows: List[Dict[str, str]] = []
         quantities = self.quantities()
-        for name, spec in self.parts.items():
-            rows.append(
-                {
-                    "item": name,
-                    "kind": "hardware" if spec.purchased else "fabricated",
-                    "quantity": str(quantities[name]),
-                    "process": " / ".join(p.value for p in spec.processes),
-                    "material": spec.material,
-                    "notes": spec.notes,
-                }
-            )
-        for item in self.hardware:
-            rows.append(
-                {
-                    "item": item.name,
-                    "kind": "hardware",
-                    "quantity": str(item.quantity),
-                    "process": Process.PURCHASED.value,
-                    "material": "",
-                    "notes": item.notes,
-                }
-            )
+        for assembly in self.walk():
+            group = assembly.path()
+            for name, spec in assembly.parts.items():
+                rows.append(
+                    {
+                        "assembly": group,
+                        "item": name,
+                        "kind": "hardware" if spec.purchased else "fabricated",
+                        "quantity": str(quantities[name]),
+                        "process": " / ".join(p.value for p in spec.processes),
+                        "material": spec.material,
+                        "notes": spec.notes,
+                    }
+                )
+            for item in assembly.hardware:
+                rows.append(
+                    {
+                        "assembly": group,
+                        "item": item.name,
+                        "kind": "hardware",
+                        "quantity": str(item.quantity),
+                        "process": Process.PURCHASED.value,
+                        "material": "",
+                        "notes": item.notes,
+                    }
+                )
         return rows
 
     def bom_markdown(self) -> str:
-        lines = [
-            f"# {self.name} bill of materials",
-            "",
-            "| Item | Qty | Process | Material | Notes |",
-            "| --- | ---: | --- | --- | --- |",
-        ]
+        lines = [f"# {self.name} bill of materials", ""]
+        current = None
         for row in self.bom_rows():
+            if row["assembly"] != current:
+                current = row["assembly"]
+                lines += [
+                    "",
+                    f"## {current}",
+                    "",
+                    "| Item | Qty | Process | Material | Notes |",
+                    "| --- | ---: | --- | --- | --- |",
+                ]
             lines.append(
                 f"| {row['item']} | {row['quantity']} | {row['process']} | "
                 f"{row['material']} | {row['notes']} |"
@@ -241,7 +332,7 @@ class Assembly:
         os.makedirs(parts_dir, exist_ok=True)
         os.makedirs(cnc_dir, exist_ok=True)
 
-        for name, spec in self.parts.items():
+        for name, spec in self.all_parts().items():
             if not spec.fabricated_file:
                 continue
             path = os.path.join(parts_dir, f"{name}.stl")

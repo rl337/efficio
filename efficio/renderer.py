@@ -1,12 +1,15 @@
 import io
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import cadquery as cq
 from PIL import Image, ImageDraw
 from reportlab.graphics import renderPM  # type: ignore
 from svglib.svglib import svg2rlg  # type: ignore
+
+from efficio import preview
+from efficio.objects.base import DEFAULT_PREVIEW_COLOR, Color, EfficioObject
 
 Projection = Tuple[float, float, float]
 
@@ -213,3 +216,132 @@ def create_composite_image(
     for index, image in enumerate(images):
         composite.paste(image, ((index % 2) * width, (index // 2) * height))
     return composite
+
+
+# --------------------------------------------------------------------------
+# Colour previews
+# --------------------------------------------------------------------------
+
+ColoredSolid = Tuple[str, cq.Shape, Color]
+ColoredTriangle = Tuple[preview.Triangle, Color]
+LEGEND_ROW_HEIGHT = 34
+
+
+def tessellate_parts(
+    parts: Sequence[ColoredSolid],
+    tolerance: float = 0.1,
+    angular_tolerance: float = 0.3,
+) -> List[ColoredTriangle]:
+    """Triangulate each solid once so every view can reuse the mesh."""
+    triangles: List[ColoredTriangle] = []
+    for _, solid, color in parts:
+        vertices, faces = solid.tessellate(tolerance, angular_tolerance)
+        points = [(v.x, v.y, v.z) for v in vertices]
+        for a, b, c in faces:
+            triangles.append(((points[a], points[b], points[c]), color))
+    return triangles
+
+
+def create_color_view(
+    triangles: Sequence[ColoredTriangle],
+    view: preview.View,
+    *,
+    style: PreviewStyle = DEFAULT_PREVIEW_STYLE,
+    show_grid: bool = True,
+) -> Image.Image:
+    width, height = style.panel_width, style.panel_height
+    polygons, viewport = preview.paint_order(
+        triangles, view, width, height, style.margin
+    )
+    image = Image.new("RGB", (width, height), "white")
+    if show_grid:
+        extent = max(width, height) / viewport.scale
+        image = _draw_guides(image, extent, style)
+    draw = ImageDraw.Draw(image)
+    for pixels, color, _ in polygons:
+        draw.polygon(pixels, fill=color, outline=color)
+    return image
+
+
+def _draw_legend(
+    image: Image.Image, legend: Sequence[Tuple[str, Color]], top: int
+) -> None:
+    draw = ImageDraw.Draw(image)
+    x = 14
+    for name, color in legend:
+        draw.rectangle((x, top + 8, x + 22, top + 26), fill=color, outline="black")
+        draw.text((x + 30, top + 11), name, fill="black")
+        x += 40 + 8 * len(name) + 24
+
+
+def create_color_composite_image(
+    parts: Sequence[ColoredSolid],
+    *,
+    legend: Sequence[Tuple[str, Color]] = (),
+    style: PreviewStyle = DEFAULT_PREVIEW_STYLE,
+    views: Sequence[preview.View] = preview.STANDARD_VIEWS,
+    annotate: bool = True,
+) -> Image.Image:
+    """Shaded, colour-coded 2x2 preview (top, front, side, isometric)."""
+    if not parts:
+        raise ValueError("Cannot preview an empty object")
+    compound = cq.Compound.makeCompound([solid for _, solid, _ in parts])
+    box = compound.BoundingBox()
+    dimensions = f"{box.xlen:.2f} x {box.ylen:.2f} x {box.zlen:.2f} mm"
+    triangles = tessellate_parts(parts)
+
+    panels: List[Image.Image] = []
+    for view in views:
+        panel = create_color_view(triangles, view, style=style)
+        if annotate:
+            panel = _annotate(panel, view.title, dimensions)
+        panels.append(panel)
+
+    width, height = panels[0].size
+    columns = 2
+    rows = (len(panels) + 1) // columns
+    legend_height = LEGEND_ROW_HEIGHT if legend else 0
+    composite = Image.new(
+        "RGB", (width * columns, height * rows + legend_height), "white"
+    )
+    for index, panel in enumerate(panels):
+        composite.paste(panel, ((index % columns) * width, (index // columns) * height))
+    if legend:
+        _draw_legend(composite, legend, height * rows)
+    return composite
+
+
+def object_preview_parts(
+    obj: EfficioObject, current: Color = DEFAULT_PREVIEW_COLOR
+) -> Tuple[List[ColoredSolid], List[Tuple[str, Color]]]:
+    """Coloured solids and legend for any object.
+
+    Objects that know their parts (assemblies) colour each part through its
+    inherited ``preview_color``; anything else is drawn in its own resolved
+    colour.
+    """
+    parts_method = getattr(obj, "preview_parts", None)
+    legend_method = getattr(obj, "preview_legend", None)
+    if callable(parts_method):
+        parts: List[ColoredSolid] = list(parts_method(current))
+        legend: List[Tuple[str, Color]] = (
+            list(legend_method(current)) if callable(legend_method) else []
+        )
+        return parts, legend
+    shape = obj.shape()
+    if shape is None:
+        raise ValueError(f"{type(obj).__name__} has no geometry")
+    color = obj.resolved_preview_color(current)
+    solids = _shape_values(shape.workplane())
+    name = type(obj).__name__
+    return [(name, solid, color) for solid in solids], [(name, color)]
+
+
+def create_object_preview(
+    obj: EfficioObject,
+    current: Color = DEFAULT_PREVIEW_COLOR,
+    *,
+    style: PreviewStyle = DEFAULT_PREVIEW_STYLE,
+) -> Image.Image:
+    parts, legend = object_preview_parts(obj, current)
+    return create_color_composite_image(parts, legend=legend, style=style)

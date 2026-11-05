@@ -91,10 +91,25 @@ sweep.
 The engine is a kinematic model. It has no valves or ignition, so it is
 turned through the gearbox or by hand/motor on the flywheel stub.
 
+### Sub-assemblies and colour previews
+
+The transaxle is built as nested `Assembly` objects named after the real car
+parts: **Engine**, **Gearbox**, **Differential**, **Axles** and **Wheels**.
+Each can be built (`gearbox_assembly(layout)`), checked and rendered on its
+own, or as part of the whole.
+
+Every `EfficioObject` has an optional `preview_color`. An object without one
+inherits its parent's colour; an object with no parent uses the renderer's
+current colour (`--color`). Only the sub-assemblies pick colours. Parts
+override them only where the material matters, like black tyres and wood
+dowels. Previews are shaded colour views (top, front, left side, isometric)
+with +Z up and a legend of the sub-assemblies. `--line-art` gives the old
+hidden-line drawing.
+
 ```bash
 python -m efficio.examples.drivetrain out/drivetrain
-python -m efficio --object RearTransaxle --params crank_angle=30 \
-    --params cylinders=2 --png rear_transaxle.png
+python -m efficio --object RearTransaxle --params section=GEARBOX --png gearbox.png
+python -m efficio --object RearTransaxle --params crank_angle=30 --png rear_transaxle.png
 ```
 
 This writes `parts/*.stl`, `cnc/*.dxf` mid-height profiles for the CNC-capable

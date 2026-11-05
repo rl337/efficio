@@ -7,11 +7,12 @@ which ones the layout needs, where they go and how they are made.
 
 import argparse
 import logging
-from typing import Dict, List, Optional
+from enum import Enum
+from typing import Dict, List, Optional, Tuple
 
 from efficio.measures import Millimeter
-from efficio.objects.assembly import Assembly, PartSpec
-from efficio.objects.base import EfficioObject
+from efficio.objects.assembly import Assembly, PartSpec, PreviewPart
+from efficio.objects.base import DEFAULT_PREVIEW_COLOR, Color, EfficioObject
 from efficio.objects.gears import MetricModule, PressureAngle
 from efficio.objects.powertrain.axles import HexWheelAdapter, PillowBlock
 from efficio.objects.powertrain.differential import (
@@ -41,6 +42,16 @@ CNC = Process.CNC_PLATE
 ROD = Process.ROD_STOCK
 DOWEL = Process.DOWEL_STOCK
 BOUGHT = Process.PURCHASED
+
+# Preview colours: only sub-assemblies pick one; their parts inherit it.
+ENGINE_COLOR: Color = (196, 66, 54)
+GEARBOX_COLOR: Color = (58, 110, 190)
+DIFFERENTIAL_COLOR: Color = (232, 152, 40)
+AXLES_COLOR: Color = (128, 134, 146)
+WHEELS_COLOR: Color = (205, 208, 214)
+# Part-level overrides where the material is the point.
+TIRE_COLOR: Color = (44, 44, 48)
+WOOD_COLOR: Color = (196, 156, 104)
 
 PLATE_MATERIAL = "6061 aluminium plate or PETG"
 GEAR_MATERIAL = "Nylon / acetal"
@@ -464,7 +475,7 @@ def _half_shaft(layout: DrivetrainLayout, name: str, span: Span) -> PartSpec:
             False,
             holes,
             Millimeter(layout.cross_pin_diameter),
-        ),
+        ).with_preview_color(WOOD_COLOR),
         (DOWEL,),
         dowel.description(),
         f"Cut {span.length:.0f} mm; drill {layout.cross_pin_diameter:g} mm cross holes "
@@ -496,14 +507,18 @@ def add_cross_pins(
         assembly.place_radial(pin, f"axle_cross_pin_{where}", ax, y, az, phases[side])
 
 
-def add_axles_and_wheels(
-    assembly: Assembly, layout: DrivetrainLayout, crank_angle: float
-) -> None:
-    ax, az = layout.axle_centre
+def _output_phases(layout: DrivetrainLayout, crank_angle: float) -> Dict[str, float]:
+    """Rotation of the left and right outputs (half-shafts and wheels)."""
     phases = layout.gear_phases(crank_angle)
     sun_a = phases["sun_a"]
     sun_b = layout.sun_b_phase(layout.planet_poses(phases["carrier"], sun_a))
-    spin = {"left": sun_a, "right": sun_b}
+    return {"left": sun_a, "right": sun_b}
+
+
+def add_axles(assembly: Assembly, layout: DrivetrainLayout, crank_angle: float) -> None:
+    ax, az = layout.axle_centre
+    spin = _output_phases(layout, crank_angle)
+    sun_a, sun_b = spin["left"], spin["right"]
     axle = layout.axle_diameter
     place = assembly.place_axial
 
@@ -527,6 +542,20 @@ def add_axles_and_wheels(
     )
     place(pillow, "axle_pillow_left", ax, az, layout.left_pillow_block.end, False)
     place(pillow, "axle_pillow_right", ax, az, layout.right_pillow_block.end, False)
+    assembly.add_hardware(
+        f"{layout.axle_bearing.spec.designation} ball bearing", 2, "Axle pillow blocks"
+    )
+    assembly.add_hardware("M3 x 12 socket cap screw", 4, "Pillow blocks to chassis")
+
+
+def add_wheels(
+    assembly: Assembly, layout: DrivetrainLayout, crank_angle: float
+) -> None:
+    ax, az = layout.axle_centre
+    spin = _output_phases(layout, crank_angle)
+    sun_a, sun_b = spin["left"], spin["right"]
+    axle = layout.axle_diameter
+    place = assembly.place_axial
 
     pin_diameter = layout.cross_pin_diameter if layout.dowel_axles else 0.0
     adapter = PartSpec(
@@ -560,7 +589,7 @@ def add_axles_and_wheels(
             Millimeter(layout.rim_diameter),
             Millimeter(rim_part.tire_width()),
             layout.tire_tread_blocks,
-        ),
+        ).with_preview_color(TIRE_COLOR),
         (PRINT,),
         "TPU 95A",
         "Stretch over rim lip",
@@ -574,9 +603,6 @@ def add_axles_and_wheels(
     place(tire, "wheel_tire_left", ax, az, lw.end - lip, False)
     place(tire, "wheel_tire_right", ax, az, rw.start + lip, True)
 
-    assembly.add_hardware(
-        f"{layout.axle_bearing.spec.designation} ball bearing", 2, "Axle pillow blocks"
-    )
     if layout.dowel_axles:
         assembly.add_hardware(
             "#4 x 1/2 in wood screw + washer", 2, "Wheel retention into dowel end grain"
@@ -585,53 +611,113 @@ def add_axles_and_wheels(
         assembly.add_hardware(
             "M3 x 10 socket cap screw + washer", 2, "Wheel retention into axle end"
         )
-    assembly.add_hardware("M3 x 12 socket cap screw", 4, "Pillow blocks to chassis")
 
 
 # -------------------------------------------------------------------- builders
+class TransaxleSection(Enum):
+    """Sub-assemblies of the transaxle, named after the real car parts."""
+
+    ALL = "Rear transaxle"
+    ENGINE = "Engine"
+    GEARBOX = "Gearbox"
+    DIFFERENTIAL = "Differential"
+    AXLES = "Axles"
+    WHEELS = "Wheels"
+
+
+def _checked(layout: Optional[DrivetrainLayout]) -> DrivetrainLayout:
+    layout = layout or DrivetrainLayout()
+    problems = layout.problems()
+    if problems:
+        raise ValueError("Invalid drivetrain layout: " + "; ".join(problems))
+    return layout
+
+
 def engine_assembly(
     layout: Optional[DrivetrainLayout] = None, crank_angle: float = 0.0
 ) -> Assembly:
+    """Block, head, crankshaft, rods, pistons and flywheel."""
     layout = layout or DrivetrainLayout()
-    assembly = Assembly(f"{layout.engine.cylinders}-cylinder model engine")
+    assembly = Assembly(TransaxleSection.ENGINE.value, ENGINE_COLOR)
     add_engine(assembly, layout, crank_angle)
+    return assembly
+
+
+def gearbox_assembly(
+    layout: Optional[DrivetrainLayout] = None, crank_angle: float = 0.0
+) -> Assembly:
+    """Reduction gearbox: side plates, standoffs, crank pinion, compound idler."""
+    layout = layout or DrivetrainLayout()
+    assembly = Assembly(TransaxleSection.GEARBOX.value, GEARBOX_COLOR)
+    add_gearbox(assembly, layout, crank_angle)
+    return assembly
+
+
+def differential_assembly(
+    layout: Optional[DrivetrainLayout] = None, crank_angle: float = 0.0
+) -> Assembly:
+    """Carrier (with ring gear), sun and planet gears, planet bolts."""
+    layout = layout or DrivetrainLayout()
+    assembly = Assembly(TransaxleSection.DIFFERENTIAL.value, DIFFERENTIAL_COLOR)
+    add_differential(assembly, layout, crank_angle)
+    return assembly
+
+
+def axle_assembly(
+    layout: Optional[DrivetrainLayout] = None, crank_angle: float = 0.0
+) -> Assembly:
+    """Half-shafts, cross pins (dowel axles) and pillow blocks."""
+    layout = layout or DrivetrainLayout()
+    assembly = Assembly(TransaxleSection.AXLES.value, AXLES_COLOR)
+    add_axles(assembly, layout, crank_angle)
+    return assembly
+
+
+def wheel_assembly(
+    layout: Optional[DrivetrainLayout] = None, crank_angle: float = 0.0
+) -> Assembly:
+    """Hex hubs, rims and tyres."""
+    layout = layout or DrivetrainLayout()
+    assembly = Assembly(TransaxleSection.WHEELS.value, WHEELS_COLOR)
+    add_wheels(assembly, layout, crank_angle)
     return assembly
 
 
 def rear_transaxle(
     layout: Optional[DrivetrainLayout] = None, crank_angle: float = 0.0
 ) -> Assembly:
-    layout = layout or DrivetrainLayout()
-    problems = layout.problems()
-    if problems:
-        raise ValueError("Invalid drivetrain layout: " + "; ".join(problems))
-    assembly = Assembly("Rear transaxle drivetrain")
-    add_engine(assembly, layout, crank_angle)
-    add_gearbox(assembly, layout, crank_angle)
-    add_differential(assembly, layout, crank_angle)
-    add_axles_and_wheels(assembly, layout, crank_angle)
+    """The whole drivetrain as nested sub-assemblies."""
+    layout = _checked(layout)
+    assembly = Assembly(TransaxleSection.ALL.value)
+    for build in (
+        engine_assembly,
+        gearbox_assembly,
+        differential_assembly,
+        axle_assembly,
+        wheel_assembly,
+    ):
+        assembly.add_subassembly(build(layout, crank_angle))
     return assembly
 
 
 class RearTransaxle(EfficioObject):
-    """Every drivetrain part placed in its assembled position, as one object.
+    """The transaxle (or one of its sub-assemblies) for the command line::
 
-    Exposed to the command line, e.g.::
-
-        python -m efficio --object RearTransaxle \\
-            --params crank_angle=0 --params cylinders=2 \\
-            --params axle_stock=WOOD_DOWEL --png rear_transaxle.png
+        python -m efficio --object RearTransaxle --params section=GEARBOX \\
+            --png gearbox.png
     """
 
     def __init__(
         self,
-        crank_angle: float,
+        crank_angle: float = 0.0,
         cylinders: int = 2,
         axle_stock: AxleStock = AxleStock.STEEL_D_FLAT,
+        section: TransaxleSection = TransaxleSection.ALL,
     ):
         self.crank_angle = crank_angle
         self.cylinders = cylinders
         self.axle_stock = axle_stock
+        self.section = section
 
     def layout(self) -> DrivetrainLayout:
         if self.axle_stock is AxleStock.WOOD_DOWEL:
@@ -642,10 +728,23 @@ class RearTransaxle(EfficioObject):
         return layout
 
     def assembly(self) -> Assembly:
-        return rear_transaxle(self.layout(), crank_angle=self.crank_angle)
+        full = rear_transaxle(self.layout(), crank_angle=self.crank_angle)
+        if self.section is TransaxleSection.ALL:
+            return full
+        return full.find(self.section.value)
 
     def shape(self) -> Optional[Shape]:
         return self.assembly().shape()
+
+    def preview_parts(
+        self, current: Color = DEFAULT_PREVIEW_COLOR
+    ) -> List[PreviewPart]:
+        return self.assembly().preview_parts(current)
+
+    def preview_legend(
+        self, current: Color = DEFAULT_PREVIEW_COLOR
+    ) -> List[Tuple[str, Color]]:
+        return self.assembly().preview_legend(current)
 
 
 def export_kit(directory: str, crank_angle: float = 0.0) -> List[str]:

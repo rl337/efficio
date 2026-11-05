@@ -3,8 +3,21 @@ import os
 import tempfile
 import unittest
 
+from efficio import renderer
 from efficio.__main__ import fetch_object_data
-from efficio.examples.drivetrain import RearTransaxle, engine_assembly, rear_transaxle
+from efficio.__main__ import main as efficio_main
+from efficio.examples.drivetrain import (
+    DIFFERENTIAL_COLOR,
+    ENGINE_COLOR,
+    GEARBOX_COLOR,
+    TIRE_COLOR,
+    WHEELS_COLOR,
+    RearTransaxle,
+    TransaxleSection,
+    engine_assembly,
+    gearbox_assembly,
+    rear_transaxle,
+)
 from efficio.measures import Millimeter
 from efficio.objects.assembly import Assembly, PartSpec
 from efficio.objects.gears import MetricModule, PressureAngle
@@ -207,3 +220,106 @@ class TestDowelAxleTransaxle(unittest.TestCase):
         self.assertTrue(obj.layout().dowel_axles)
         options = {cls.__name__: p for cls, p in fetch_object_data().items()}
         self.assertEqual(options["RearTransaxle"]["axle_stock"][0], "AxleStock")
+
+
+class TestSubassemblies(unittest.TestCase):
+    assembly: Assembly
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.assembly = rear_transaxle(DrivetrainLayout(), crank_angle=0.0)
+
+    def test_named_after_car_parts(self) -> None:
+        names = [child.name for child in self.assembly.children]
+        self.assertEqual(
+            names, ["Engine", "Gearbox", "Differential", "Axles", "Wheels"]
+        )
+        self.assertEqual(
+            [s.value for s in TransaxleSection if s is not TransaxleSection.ALL],
+            names,
+        )
+
+    def test_gearbox_contents(self) -> None:
+        gearbox = self.assembly.find("Gearbox")
+        labels = {p.label for p in gearbox.all_instances()}
+        self.assertIn("crank_pinion", labels)
+        self.assertIn("idler_compound_gear", labels)
+        self.assertIn("gearbox_plate_left", labels)
+        self.assertNotIn("diff_sun_left", labels)
+        self.assertEqual(gearbox.path(), "Rear transaxle / Gearbox")
+        with self.assertRaises(KeyError):
+            self.assembly.find("Transmission")
+
+    def test_instances_are_split_without_loss(self) -> None:
+        total = sum(len(c.instances) for c in self.assembly.children)
+        self.assertEqual(total, len(self.assembly.all_instances()))
+        self.assertEqual(self.assembly.instances, [])
+
+    def test_gearbox_builds_and_renders_on_its_own(self) -> None:
+        gearbox = gearbox_assembly(DrivetrainLayout())
+        self.assertIsNone(gearbox.parent)
+        self.assertEqual(gearbox.interferences(), [])
+        image = renderer.create_object_preview(gearbox)
+        self.assertGreater(image.width, 0)
+
+    def test_parts_inherit_their_assembly_colour(self) -> None:
+        colours = {label: color for label, _, color in self.assembly.preview_parts()}
+        self.assertEqual(colours["crank_pinion"], GEARBOX_COLOR)
+        self.assertEqual(colours["piston_0"], ENGINE_COLOR)
+        self.assertEqual(colours["diff_planet_P1.0"], DIFFERENTIAL_COLOR)
+        self.assertEqual(colours["wheel_rim_left"], WHEELS_COLOR)
+        # Part-level override wins over the assembly colour.
+        self.assertEqual(colours["wheel_tire_left"], TIRE_COLOR)
+
+    def test_legend_lists_subassemblies(self) -> None:
+        legend = dict(self.assembly.preview_legend())
+        self.assertEqual(legend["Gearbox"], GEARBOX_COLOR)
+        self.assertEqual(len(legend), 5)
+        self.assertEqual(
+            self.assembly.find("Gearbox").preview_legend(), [("Gearbox", GEARBOX_COLOR)]
+        )
+
+    def test_bom_grouped_by_subassembly(self) -> None:
+        rows = self.assembly.bom_rows()
+        groups = {row["item"]: row["assembly"] for row in rows}
+        self.assertEqual(groups["crank_pinion"], "Rear transaxle / Gearbox")
+        self.assertEqual(groups["wheel_tire"], "Rear transaxle / Wheels")
+        markdown = self.assembly.bom_markdown()
+        self.assertIn("## Rear transaxle / Differential", markdown)
+
+    def test_cli_renders_a_section(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            png = os.path.join(directory, "gearbox.png")
+            efficio_main(
+                "RearTransaxle", [("section", "GEARBOX")], png, None, "#336699"
+            )
+            self.assertGreater(os.path.getsize(png), 0)
+        obj = RearTransaxle(section=TransaxleSection.DIFFERENTIAL)
+        self.assertEqual(obj.assembly().name, "Differential")
+        self.assertEqual(obj.preview_legend(), [("Differential", DIFFERENTIAL_COLOR)])
+
+
+class TestPreviewColourInheritance(unittest.TestCase):
+    def test_resolution_order(self) -> None:
+        root = Assembly("root")
+        child = root.add_subassembly(Assembly("child"))
+        gear = SpurGear(
+            MetricModule.MODULE_1_5, 12, Millimeter(5), Millimeter(5), False
+        )
+        spec = PartSpec("gear", gear, (Process.FDM_PRINT,), "PLA")
+        child.place_axial(spec, "gear", 0.0, 0.0, 0.0, True)
+        current = (1, 2, 3)
+        # Nobody has a colour: the renderer's current colour is used.
+        self.assertEqual(gear.resolved_preview_color(current), current)
+        root.preview_color = (10, 20, 30)
+        self.assertEqual(gear.resolved_preview_color(current), (10, 20, 30))
+        child.preview_color = (40, 50, 60)
+        self.assertEqual(child.preview_parts(current)[0][2], (40, 50, 60))
+        gear.with_preview_color((70, 80, 90))
+        self.assertEqual(root.preview_parts(current)[0][2], (70, 80, 90))
+
+    def test_subassembly_has_one_parent(self) -> None:
+        child = Assembly("child")
+        Assembly("a").add_subassembly(child)
+        with self.assertRaises(ValueError):
+            Assembly("b").add_subassembly(child)
