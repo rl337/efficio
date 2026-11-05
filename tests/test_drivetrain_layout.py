@@ -126,3 +126,12 @@ class TestDrivetrainLayout(unittest.TestCase):
         self.assertAlmostEqual(span.centre, 2.5)
         self.assertTrue(span.overlaps(Span(3.0, 5.0)))
         self.assertFalse(span.overlaps(Span(4.0, 5.0)))
+
+    def test_rod_sweep_needs_crankcase_relief(self) -> None:
+        class NoRelief(DrivetrainLayout):
+            @property
+            def crankcase_relief_half_width(self) -> float:
+                return self.bore / 2.0
+
+        self.assertEqual(self.layout.rod_clearance_problems(), [])
+        self.assertTrue(NoRelief().rod_clearance_problems())

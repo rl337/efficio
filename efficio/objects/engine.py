@@ -185,6 +185,19 @@ class EngineBlockHalf(EfficioObject):
         for i in range(layout.cylinders):
             y = layout.cylinder_y(i) - y0
             block = block.cut(cylinder(layout.bore / 2, 10.0, deck + 1.0, 0.0, y))
+            # Crankcase relief: the rod shank swings wider than the bore just
+            # above the crank tunnel.
+            relief = layout.crankcase_relief_half_width
+            block = block.cut(
+                _box(
+                    -relief,
+                    relief,
+                    y - layout.bore / 2,
+                    y + layout.bore / 2,
+                    0.0,
+                    layout.crankcase_relief_height,
+                )
+            )
         for dx, y in layout.head_bolt_positions():
             block = block.cut(
                 cylinder(M3_TAP_RADIUS_MM, deck - 15.0, deck + 1.0, dx, y - y0)

@@ -21,6 +21,8 @@ from efficio.objects.involute import (
     InvoluteGearGeometry,
     Point,
     centre_distance,
+    circle_points,
+    convex_hull,
     distance,
     mesh_phase,
 )
@@ -334,6 +336,54 @@ class DrivetrainLayout:
         return self.crank_tunnel_radius + 3.0
 
     @property
+    def crankcase_relief_half_width(self) -> float:
+        return self.block_half_width - 6.0
+
+    @property
+    def crankcase_relief_height(self) -> float:
+        return self.crank_tunnel_radius + 4.0
+
+    def rod_outline(self, crank_angle: float, cylinder: int = 0) -> List[Point]:
+        """World (x, z) outline of a connecting rod at ``crank_angle``."""
+        pose = self.engine_pose(crank_angle)
+        pin = pose.crankpin_centres[cylinder]
+        wrist = (self.crank_centre[0], pose.wrist_pin_heights[cylinder])
+        small_end = self.wrist_pin_diameter / 2.0 + 2.0
+        points = circle_points(pin, self.rod_big_end_radius, 48)
+        points += circle_points(wrist, small_end, 48)
+        hull = convex_hull(points)
+        # Densify the straight shank edges so sweeps sample their full length.
+        dense: List[Point] = []
+        for i, a in enumerate(hull):
+            b = hull[(i + 1) % len(hull)]
+            steps = max(1, int(distance(a, b) / 0.5))
+            for k in range(steps):
+                t = k / steps
+                dense.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+        return dense
+
+    def rod_clearance_problems(self, step: float = 5.0) -> List[str]:
+        """Sweep the rods through a revolution against the bore and relief."""
+        issues: List[str] = []
+        cx, cz = self.crank_centre
+        angle = 0.0
+        while angle < 360.0:
+            for x, z in self.rod_outline(angle):
+                height = z - cz
+                lateral = abs(x - cx)
+                if height > self.crankcase_relief_height:
+                    limit = self.bore / 2.0 - 0.5
+                elif height > self.crank_tunnel_radius - 3.0:
+                    limit = self.crankcase_relief_half_width - 0.5
+                else:
+                    continue
+                if lateral > limit:
+                    issues.append(f"connecting rod hits block at {angle:g} deg")
+                    return issues
+            angle += step
+        return issues
+
+    @property
     def block_bottom(self) -> float:
         return self.axle_height - self.block_half_width
 
@@ -586,6 +636,7 @@ class DrivetrainLayout:
         ) + self.rod_thickness
         if skirt_reach > self.bore / 2.0 - 2.0 - 0.3:
             issues.append("connecting rod hits piston skirt")
+        issues.extend(self.rod_clearance_problems())
         if self.block_bottom < 5.0:
             issues.append("engine block too close to ground")
         if self.crank_centre[1] - self.flywheel_diameter / 2.0 < 5.0:
