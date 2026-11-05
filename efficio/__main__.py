@@ -36,6 +36,9 @@ def find_subclasses_in_directory(
                 spec = importlib.util.spec_from_file_location(module_name, file_path)
                 if spec and spec.loader:
                     module = importlib.util.module_from_spec(spec)
+                    # Register before executing (importlib's recipe) so that
+                    # dataclasses with forward references can resolve them.
+                    sys.modules[module_name] = module
                     spec.loader.exec_module(module)
 
                     for name, obj in inspect.getmembers(module, inspect.isclass):
