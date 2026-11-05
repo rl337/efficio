@@ -27,7 +27,7 @@ jobs:
           done
           render --params axle_stock=WOOD_DOWEL \
             --png /app/previews/rear_transaxle_dowel_axles.png
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: previews
           path: previews/*.png
