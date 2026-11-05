@@ -73,6 +73,15 @@ its own dimensions, so it can be reused outside this build:
 | shared | `shafts` (`Shaft`, `Standoff`), `bearings`, `fits`, `profiles` (CadQuery helpers), `planar` (pure 2D) |
 | `layout` | `DrivetrainLayout`: composes the engine and differential geometry, works out shaft centres from pitch radii, sets gear rotations so teeth mesh, and checks clearances |
 
+Axles can be ground steel rod (D-flat drive, tapped end) or **hardwood
+dowel** from the hardware store: `DrivetrainLayout.with_dowel_axles()` defaults
+to a 1/4" Waddell dowel (Ace item 5980552). Wood can't hold a D-flat, so
+the sun gears and wheel hex adapters are driven by a 2 mm cross pin through the
+dowel, seated in a slot. The dowel runs through the wheel hub, and a wood screw
+in its end grain holds the wheel on. The carrier hub moves to a 6801 bearing,
+and the pillow blocks take inch-series R4 bearings. `powertrain.dowels` lists
+the Waddell sizes from 1/8" to 1".
+
 Engine parts have `from_engine(EngineGeometry)` factories. Change the layout
 (for example `DrivetrainLayout(engine=EngineGeometry(cylinders=3))`) and every
 dependent part, plate hole and shaft length follows. The assembled solids are

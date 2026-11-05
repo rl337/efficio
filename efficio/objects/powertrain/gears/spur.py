@@ -12,18 +12,31 @@ import cadquery as cq
 from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
 from efficio.objects.gears import MetricModule, PressureAngle
-from efficio.objects.powertrain.fits import RUNNING_CLEARANCE_MM, SLIDING_CLEARANCE_MM
+from efficio.objects.powertrain.fits import (
+    PINNED_BORE_CLEARANCE_MM,
+    RUNNING_CLEARANCE_MM,
+    SLIDING_CLEARANCE_MM,
+)
 from efficio.objects.powertrain.gears.involute import InvoluteGearGeometry
-from efficio.objects.powertrain.profiles import bore_cutter, cylinder, prism, wrap
+from efficio.objects.powertrain.profiles import (
+    bore_cutter,
+    cross_pin_slot_cutter,
+    cylinder,
+    prism,
+    wrap,
+)
 from efficio.objects.shapes import Shape
 
 DEFAULT_BACKLASH = Millimeter(0.15)
 NO_HUB = Millimeter(0)
 
 
-def bore_allowance(d_flat: bool) -> float:
-    """D-flat bores drive the gear so they fit closely; round bores run."""
-    return SLIDING_CLEARANCE_MM if d_flat else RUNNING_CLEARANCE_MM
+def bore_allowance(d_flat: bool, pinned: bool = False) -> float:
+    """D-flat bores drive the gear so they fit closely; pinned round bores
+    (e.g. on a dowel) are snug; plain round bores run free."""
+    if d_flat:
+        return SLIDING_CLEARANCE_MM
+    return PINNED_BORE_CLEARANCE_MM if pinned else RUNNING_CLEARANCE_MM
 
 
 class SpurGear(EfficioObject):
@@ -31,6 +44,9 @@ class SpurGear(EfficioObject):
 
     Teeth occupy ``0 <= z <= thickness``; the hub (if any) continues to
     ``thickness + hub_length``.  Tooth 0 and the D-flat both face local +X.
+    A non-zero ``cross_pin_diameter`` drives the gear from a round shaft
+    instead: a slot along local X on the ``z = 0`` face seats a pin through
+    the shaft.
     """
 
     def __init__(
@@ -44,7 +60,11 @@ class SpurGear(EfficioObject):
         hub_diameter: Measure = NO_HUB,
         hub_length: Measure = NO_HUB,
         backlash: Measure = DEFAULT_BACKLASH,
+        cross_pin_diameter: Measure = NO_HUB,
+        cross_pin_length: Measure = NO_HUB,
     ):
+        if cross_pin_diameter.value() > 0 and d_flat:
+            raise ValueError("choose either a D-flat or a cross-pin drive")
         self.module = module
         self.teeth = teeth
         self.thickness = thickness
@@ -54,6 +74,12 @@ class SpurGear(EfficioObject):
         self.hub_diameter = hub_diameter
         self.hub_length = hub_length
         self.backlash = backlash
+        self.cross_pin_diameter = cross_pin_diameter
+        self.cross_pin_length = cross_pin_length
+
+    @property
+    def pinned(self) -> bool:
+        return self.cross_pin_diameter.value() > 0
 
     def geometry(self) -> InvoluteGearGeometry:
         return InvoluteGearGeometry(
@@ -85,9 +111,18 @@ class SpurGear(EfficioObject):
         return body
 
     def bore_cutter(self, z0: float, z1: float) -> cq.Workplane:
-        return bore_cutter(
-            self.bore.value(), self.d_flat, z0, z1, bore_allowance(self.d_flat)
-        )
+        allowance = bore_allowance(self.d_flat, self.pinned)
+        cutter = bore_cutter(self.bore.value(), self.d_flat, z0, z1, allowance)
+        if self.pinned:
+            cutter = cutter.union(
+                cross_pin_slot_cutter(
+                    self.cross_pin_diameter.value(),
+                    self.cross_pin_length.value(),
+                    0.0,
+                    True,
+                )
+            )
+        return cutter
 
     def shape(self) -> Optional[Shape]:
         return wrap(self.blank().cut(self.bore_cutter(-1.0, self.length + 1.0)))

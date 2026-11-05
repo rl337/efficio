@@ -3,8 +3,9 @@ import unittest
 
 from efficio.objects.powertrain.bearings import StandardBearing
 from efficio.objects.powertrain.differential.geometry import SpurDifferentialGeometry
+from efficio.objects.powertrain.dowels import StandardDowel
 from efficio.objects.powertrain.engine.geometry import EngineGeometry
-from efficio.objects.powertrain.layout import DrivetrainLayout, PlateSide
+from efficio.objects.powertrain.layout import AxleStock, DrivetrainLayout, PlateSide
 from efficio.objects.powertrain.planar import distance
 
 
@@ -211,7 +212,7 @@ class TestDrivetrainLayout(unittest.TestCase):
                 wheel_diameter=120.0,
                 rim_diameter=86.0,
             ),
-            DrivetrainLayout(axle_bearing=StandardBearing.B688),
+            DrivetrainLayout(pillow_centre_height=20.0, hex_across_flats=14.0),
         ]
         for layout in variants:
             with self.subTest(layout=layout):
@@ -226,3 +227,74 @@ class TestDrivetrainLayout(unittest.TestCase):
         self.assertTrue(
             DrivetrainLayout(engine=EngineGeometry(cylinder_spacing=12)).problems()
         )
+
+
+class TestDowels(unittest.TestCase):
+    def test_catalogue_matches_inch_sizes(self) -> None:
+        self.assertAlmostEqual(StandardDowel.D_1_4.spec.diameter, 6.35)
+        self.assertAlmostEqual(StandardDowel.D_3_8.spec.diameter, 9.525)
+        self.assertAlmostEqual(StandardDowel.D_1_4.spec.stock_lengths[0], 914.4)
+        self.assertIn("5980552", StandardDowel.D_1_4.spec.description())
+
+    def test_stock_pieces(self) -> None:
+        dowel = StandardDowel.D_1_4.spec
+        self.assertEqual(dowel.stock_pieces([140.0, 140.0]), 1)
+        self.assertEqual(dowel.stock_pieces([500.0, 500.0]), 2)
+        with self.assertRaises(ValueError):
+            dowel.stock_pieces([1000.0])
+
+    def test_dowel_axle_layout_is_sound(self) -> None:
+        layout = DrivetrainLayout.with_dowel_axles()
+        self.assertEqual(layout.problems(), [])
+        self.assertTrue(layout.dowel_axles)
+        self.assertAlmostEqual(layout.axle_diameter, 6.35)
+        self.assertEqual(layout.axle_bearing, StandardBearing.R4)
+        self.assertEqual(layout.carrier_bearing, StandardBearing.B6801)
+        self.assertAlmostEqual(layout.differential.hub_diameter, 12.0)
+
+    def test_dowel_runs_through_the_wheel_hub(self) -> None:
+        steel = DrivetrainLayout()
+        dowel = DrivetrainLayout.with_dowel_axles()
+        self.assertAlmostEqual(
+            dowel.right_half_shaft.end, dowel.right_wheel.start + dowel.rim_hub_length
+        )
+        self.assertGreater(dowel.right_half_shaft.length, steel.right_half_shaft.length)
+        self.assertGreater(dowel.rim_axle_bore, dowel.axle_diameter)
+
+    def test_cross_pins_sit_inside_their_shafts(self) -> None:
+        layout = DrivetrainLayout.with_dowel_axles()
+        pins = layout.axle_cross_pins()
+        self.assertEqual(
+            set(pins), {"sun_left", "sun_right", "wheel_left", "wheel_right"}
+        )
+        for name, y in pins.items():
+            span = (
+                layout.left_half_shaft
+                if name.endswith("left")
+                else layout.right_half_shaft
+            )
+            self.assertGreater(y - span.start, 3.0, name)
+            self.assertGreater(span.end - y, 3.0, name)
+        self.assertEqual(DrivetrainLayout().axle_cross_pins(), {})
+
+    def test_larger_dowels_need_a_larger_hex(self) -> None:
+        crowded = DrivetrainLayout.with_dowel_axles(StandardDowel.D_5_16)
+        self.assertIn("hex adapter too small for the dowel", crowded.problems())
+        roomy = DrivetrainLayout.with_dowel_axles(
+            StandardDowel.D_5_16, hex_across_flats=14.0
+        )
+        self.assertEqual(roomy.problems(), [])
+
+    def test_unsupported_dowel_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            DrivetrainLayout.with_dowel_axles(StandardDowel.D_1)
+
+    def test_mismatched_axle_settings_flagged(self) -> None:
+        bad = DrivetrainLayout(axle_stock=AxleStock.WOOD_DOWEL)
+        problems = bad.problems()
+        self.assertIn("dowel axles need a cross-pin drive", problems)
+        self.assertIn("differential is not bored for the dowel", problems)
+
+    def test_axle_bearing_must_suit_the_axle(self) -> None:
+        loose = DrivetrainLayout(axle_bearing=StandardBearing.B688)
+        self.assertIn("axle bearing bore much larger than the axle", loose.problems())

@@ -14,17 +14,22 @@ positions them, derives shaft centres from gear pitch radii, and checks the
 clearances that only exist once they are put together.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from efficio.objects.powertrain.bearings import StandardBearing
 from efficio.objects.powertrain.differential.geometry import (
     PlanetPose,
     SpurDifferentialGeometry,
 )
+from efficio.objects.powertrain.dowels import StandardDowel
 from efficio.objects.powertrain.engine.geometry import EngineGeometry
-from efficio.objects.powertrain.fits import M3_CLEARANCE_RADIUS_MM
+from efficio.objects.powertrain.fits import (
+    M3_CLEARANCE_RADIUS_MM,
+    RUNNING_CLEARANCE_MM,
+    cross_pin_offset,
+)
 from efficio.objects.powertrain.gearbox.features import PlateHole, PlateSeat
 from efficio.objects.powertrain.gears.involute import (
     InvoluteGearGeometry,
@@ -37,6 +42,22 @@ from efficio.objects.powertrain.planar import Point, Span, distance
 class PlateSide(Enum):
     LEFT = "left"
     RIGHT = "right"
+
+
+class AxleStock(Enum):
+    """What the half-shafts are made of and how they are driven."""
+
+    STEEL_D_FLAT = "steel_d_flat"  # ground steel rod, D-flat drive, tapped end
+    WOOD_DOWEL = "wood_dowel"  # hardwood dowel, cross-pin drive, wood screw end
+
+
+# Bearings and carrier hubs that suit each dowel size (dowel runs in the
+# carrier hub bore; the hub runs in the gearbox plate bearing).
+DOWEL_AXLE_BEARINGS: Dict[StandardDowel, Tuple[StandardBearing, StandardBearing]] = {
+    StandardDowel.D_1_4: (StandardBearing.R4, StandardBearing.B6801),
+    StandardDowel.D_5_16: (StandardBearing.B608, StandardBearing.B6801),
+    StandardDowel.D_3_8: (StandardBearing.R6, StandardBearing.B6802),
+}
 
 
 @dataclass
@@ -77,6 +98,45 @@ class DrivetrainLayout:
     pillow_block_thickness: float = 10.0
     pillow_centre_height: float = 15.0
     wheel_clearance: float = 5.0
+    rim_spoke_thickness: float = 6.0
+    axle_stock: AxleStock = AxleStock.STEEL_D_FLAT
+    axle_dowel: StandardDowel = StandardDowel.D_1_4
+
+    @classmethod
+    def with_dowel_axles(
+        cls,
+        dowel: StandardDowel = StandardDowel.D_1_4,
+        cross_pin_diameter: float = 2.0,
+        cross_pin_length: float = 9.0,
+        differential: Optional[SpurDifferentialGeometry] = None,
+        **overrides: Any,
+    ) -> "DrivetrainLayout":
+        """Layout whose half-shafts are hardwood dowels.
+
+        The differential's sun gears and the wheel hex adapters are bored for
+        the dowel and driven by a cross pin; the carrier hub and bearings are
+        resized so the dowel passes through.
+        """
+        if dowel not in DOWEL_AXLE_BEARINGS:
+            raise ValueError(f"no bearing pairing for a {dowel.spec.nominal} in dowel")
+        axle_bearing, carrier_bearing = DOWEL_AXLE_BEARINGS[dowel]
+        base = differential or SpurDifferentialGeometry()
+        diff = replace(
+            base,
+            axle_diameter=dowel.spec.diameter,
+            hub_diameter=carrier_bearing.spec.bore,
+            axle_cross_pin_diameter=cross_pin_diameter,
+            axle_cross_pin_length=cross_pin_length,
+        )
+        options: Dict[str, Any] = {
+            "axle_stock": AxleStock.WOOD_DOWEL,
+            "axle_dowel": dowel,
+            "differential": diff,
+            "axle_bearing": axle_bearing,
+            "carrier_bearing": carrier_bearing,
+        }
+        options.update(overrides)
+        return cls(**options)
 
     # ------------------------------------------------------------------ gears
     def gear(self, teeth: int) -> InvoluteGearGeometry:
@@ -94,8 +154,22 @@ class DrivetrainLayout:
         )
 
     @property
+    def dowel_axles(self) -> bool:
+        return self.axle_stock is AxleStock.WOOD_DOWEL
+
+    @property
     def axle_diameter(self) -> float:
+        if self.dowel_axles:
+            return self.axle_dowel.spec.diameter
         return self.differential.axle_diameter
+
+    @property
+    def cross_pin_diameter(self) -> float:
+        return self.differential.axle_cross_pin_diameter
+
+    @property
+    def cross_pin_length(self) -> float:
+        return self.differential.axle_cross_pin_length
 
     # -------------------------------------------------------- planar centres
     @property
@@ -256,9 +330,28 @@ class DrivetrainLayout:
         return self.right_wheel.centre - self.left_wheel.centre
 
     @property
+    def rim_hub_length(self) -> float:
+        return self.hex_adapter_length + self.rim_spoke_thickness
+
+    @property
+    def axle_wheel_engagement(self) -> float:
+        """How far the axle runs into the wheel from its inboard face.
+
+        Steel axles stop at the hex adapter (tapped end, screw through hub);
+        dowels run through the hub so a wood screw can go into end grain.
+        """
+        return self.rim_hub_length if self.dowel_axles else self.hex_adapter_length
+
+    @property
+    def rim_axle_bore(self) -> float:
+        if self.dowel_axles:
+            return self.axle_diameter + 2 * RUNNING_CLEARANCE_MM
+        return 2 * M3_CLEARANCE_RADIUS_MM
+
+    @property
     def left_half_shaft(self) -> Span:
         return Span(
-            self.left_wheel.end - self.hex_adapter_length,
+            self.left_wheel.end - self.axle_wheel_engagement,
             self.carrier_offset + self.differential.left_axle_end,
         )
 
@@ -266,8 +359,20 @@ class DrivetrainLayout:
     def right_half_shaft(self) -> Span:
         return Span(
             self.carrier_offset + self.differential.right_axle_end,
-            self.right_wheel.start + self.hex_adapter_length,
+            self.right_wheel.start + self.axle_wheel_engagement,
         )
+
+    def axle_cross_pins(self) -> Dict[str, float]:
+        """World y of each cross pin, keyed by position (pinned axles only)."""
+        if not self.differential.pinned_axles:
+            return {}
+        offset = cross_pin_offset(self.cross_pin_diameter)
+        return {
+            "sun_left": self.carrier_offset + self.differential.sun_a_pin,
+            "sun_right": self.carrier_offset + self.differential.sun_b_pin,
+            "wheel_left": self.left_wheel.end - self.hex_adapter_length + offset,
+            "wheel_right": self.right_wheel.start + self.hex_adapter_length - offset,
+        }
 
     @property
     def left_pillow_block(self) -> Span:
@@ -422,4 +527,32 @@ class DrivetrainLayout:
             issues.append("right pillow block collides with gearbox")
         if self.rim_diameter >= self.wheel_diameter - 10.0:
             issues.append("tyre too thin")
+        if abs(self.carrier_bearing.spec.bore - self.differential.hub_diameter) > 0.01:
+            issues.append("carrier hub does not match its bearing bore")
+        if self.axle_bearing.spec.bore + 0.3 < self.axle_diameter:
+            issues.append("axle bearing bore smaller than the axle")
+        if self.axle_bearing.spec.bore - self.axle_diameter > 0.3:
+            issues.append("axle bearing bore much larger than the axle")
+        issues.extend(self._axle_stock_problems())
+        return issues
+
+    def _axle_stock_problems(self) -> List[str]:
+        issues: List[str] = []
+        diff = self.differential
+        if not self.dowel_axles:
+            if diff.pinned_axles:
+                issues.append("steel axles use D-flat drive, not cross pins")
+            return issues
+        if abs(diff.axle_diameter - self.axle_diameter) > 1e-6:
+            issues.append("differential is not bored for the dowel")
+        if not diff.pinned_axles:
+            issues.append("dowel axles need a cross-pin drive")
+        hex_inscribed = self.hex_across_flats / 2
+        if self.cross_pin_length / 2 + 0.2 > hex_inscribed - 1.0:
+            issues.append("axle cross pin breaks out of the hex adapter")
+        if self.axle_diameter / 2 + RUNNING_CLEARANCE_MM > hex_inscribed - 2.0:
+            issues.append("hex adapter too small for the dowel")
+        engagement = self.hex_adapter_length - cross_pin_offset(self.cross_pin_diameter)
+        if engagement < 2 * self.cross_pin_diameter:
+            issues.append("hex adapter too short for its cross pin")
         return issues

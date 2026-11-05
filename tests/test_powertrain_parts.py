@@ -233,3 +233,71 @@ class TestAxlesAndWheels(unittest.TestCase):
         self.assertAlmostEqual(small_bounds[1], -15.0, places=3)
         self.assertAlmostEqual(large_bounds[1], -20.0, places=3)
         self.assertGreater(_size(large_bounds)[0], _size(small_bounds)[0])
+
+
+class TestDowelInterfaces(unittest.TestCase):
+    def test_cross_drilled_dowel(self) -> None:
+        plain = Shaft(Millimeter(6.35), Millimeter(100), False)
+        drilled = Shaft(Millimeter(6.35), Millimeter(100), False, [7.0, 93.0])
+        self.assertLess(_solid(drilled)[2], _solid(plain)[2] - 2 * 3.14 * 6.0 * 0.9)
+        with self.assertRaises(ValueError):
+            Shaft(Millimeter(6.35), Millimeter(10), False, [12.0]).shape()
+
+    def test_pinned_gear_has_slot_not_flat(self) -> None:
+        args = (MetricModule.MODULE_1_5, 12, Millimeter(8), Millimeter(6.35), False)
+        plain = SpurGear(*args)
+        pinned = SpurGear(
+            *args, cross_pin_diameter=Millimeter(2), cross_pin_length=Millimeter(9)
+        )
+        self.assertTrue(pinned.pinned)
+        self.assertLess(_solid(pinned)[2], _solid(plain)[2])
+        with self.assertRaises(ValueError):
+            SpurGear(
+                MetricModule.MODULE_1_5,
+                12,
+                Millimeter(8),
+                Millimeter(6.35),
+                True,
+                cross_pin_diameter=Millimeter(2),
+            )
+
+    def test_dowel_sun_gear(self) -> None:
+        diff = SpurDifferentialGeometry(
+            axle_diameter=6.35, hub_diameter=12.0, axle_cross_pin_diameter=2.0
+        )
+        sun = sun_gear(diff)
+        self.assertTrue(sun.pinned)
+        self.assertFalse(sun.d_flat)
+        _solid(sun)
+        _solid(SpurDifferentialCarrierHalf(diff, Millimeter(10)))
+
+    def test_pinned_hex_adapter_and_through_bore_rim(self) -> None:
+        d_flat = HexWheelAdapter(Millimeter(12), Millimeter(8), Millimeter(6.35))
+        pinned = HexWheelAdapter(
+            Millimeter(12),
+            Millimeter(8),
+            Millimeter(6.35),
+            Millimeter(2),
+            Millimeter(9),
+        )
+        self.assertLess(_solid(pinned)[2], _solid(d_flat)[2])
+        screw_hole = Rim(
+            Millimeter(80), Millimeter(30), Millimeter(12), Millimeter(8), 5
+        )
+        through = Rim(
+            Millimeter(80),
+            Millimeter(30),
+            Millimeter(12),
+            Millimeter(8),
+            5,
+            Millimeter(6),
+            Millimeter(6.75),
+        )
+        self.assertAlmostEqual(through.hub_length(), 14.0)
+        self.assertLess(_solid(through)[2], _solid(screw_hole)[2])
+
+    def test_pillow_block_for_inch_bearing(self) -> None:
+        block = PillowBlock(
+            Millimeter(6.35), StandardBearing.R4, Millimeter(15), Millimeter(10)
+        )
+        _solid(block)

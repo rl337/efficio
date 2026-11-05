@@ -17,7 +17,12 @@ jobs:
           mkdir -p previews
           docker run -v ${{ github.workspace }}:/app efficio \
             poetry run python -m efficio --object RearTransaxle \
-            --params crank_angle=30 --params cylinders=2 --png /app/previews/rear_transaxle.png
+            --params crank_angle=30 --params cylinders=2 \
+            --params axle_stock=STEEL_D_FLAT --png /app/previews/rear_transaxle.png
+          docker run -v ${{ github.workspace }}:/app efficio \
+            poetry run python -m efficio --object RearTransaxle \
+            --params crank_angle=30 --params cylinders=2 \
+            --params axle_stock=WOOD_DOWEL --png /app/previews/rear_transaxle_dowel_axles.png
       - uses: actions/upload-artifact@v4
         with:
           name: previews

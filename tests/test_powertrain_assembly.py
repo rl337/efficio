@@ -11,7 +11,7 @@ from efficio.objects.gears import MetricModule, PressureAngle
 from efficio.objects.powertrain.engine import EngineGeometry
 from efficio.objects.powertrain.fits import Process
 from efficio.objects.powertrain.gears import SpurGear, mesh_phase
-from efficio.objects.powertrain.layout import DrivetrainLayout
+from efficio.objects.powertrain.layout import AxleStock, DrivetrainLayout
 
 
 class TestDrivetrainAssembly(unittest.TestCase):
@@ -161,3 +161,49 @@ class TestRearTransaxleObject(unittest.TestCase):
         self.assertGreater(
             bounds[5], layout.crank_centre[1] + layout.engine.deck_height
         )
+
+
+class TestDowelAxleTransaxle(unittest.TestCase):
+    layout: DrivetrainLayout
+    assembly: Assembly
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.layout = DrivetrainLayout.with_dowel_axles()
+        cls.assembly = rear_transaxle(cls.layout, crank_angle=40.0)
+
+    def test_dowel_transaxle_has_no_interference(self) -> None:
+        self.assertEqual(self.assembly.interferences(), [])
+
+    def test_cross_pins_are_placed_across_the_axle(self) -> None:
+        quantities = self.assembly.quantities()
+        self.assertEqual(quantities["axle_cross_pin"], 4)
+        pin = self.assembly.instance("axle_cross_pin_wheel_right").solid.BoundingBox()
+        y = self.layout.axle_cross_pins()["wheel_right"]
+        self.assertAlmostEqual((pin.ymin + pin.ymax) / 2, y, delta=0.05)
+        self.assertAlmostEqual(pin.ymax - pin.ymin, 2.0, delta=0.15)
+        span = max(pin.xmax - pin.xmin, pin.zmax - pin.zmin)
+        self.assertGreater(span, 0.6 * self.layout.cross_pin_length)
+
+    def test_bom_lists_dowels_and_wood_screws(self) -> None:
+        rows = {row["item"]: row for row in self.assembly.bom_rows()}
+        shaft = rows["half_shaft_left"]
+        self.assertEqual(shaft["process"], "dowel_stock")
+        self.assertIn("Ace item 5980552", shaft["material"])
+        self.assertIn("#4 x 1/2 in wood screw + washer", rows)
+        self.assertIn("R4 ball bearing", rows)
+        self.assertIn("6801 ball bearing", rows)
+        self.assertNotIn("M3 x 10 socket cap screw + washer", rows)
+        with tempfile.TemporaryDirectory() as directory:
+            names = {
+                os.path.basename(p)
+                for p in self.assembly.export(directory, include_assembly=False)
+            }
+        self.assertNotIn("half_shaft_left.stl", names)
+        self.assertIn("wheel_hex_adapter.stl", names)
+
+    def test_cli_object_builds_dowel_variant(self) -> None:
+        obj = RearTransaxle(0.0, 2, AxleStock.WOOD_DOWEL)
+        self.assertTrue(obj.layout().dowel_axles)
+        options = {cls.__name__: p for cls, p in fetch_object_data().items()}
+        self.assertEqual(options["RearTransaxle"]["axle_stock"][0], "AxleStock")

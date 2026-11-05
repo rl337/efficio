@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from efficio.measures import Measure
+from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
 from efficio.objects.powertrain.axles.hub import hex_socket_cutter
 from efficio.objects.powertrain.fits import M3_CLEARANCE_RADIUS_MM
@@ -18,14 +18,15 @@ RIM_WALL_MM = 2.5
 RIM_LIP_HEIGHT_MM = 2.0
 RIM_LIP_WIDTH_MM = 2.0
 SPOKE_WIDTH_MM = 6.0
-SPOKE_THICKNESS_MM = 6.0
 
 
 class Rim(EfficioObject):
     """Local z = 0 is the inboard face, where the hex socket opens.
 
-    An M3 screw through the hub into the tapped axle end retains the wheel.
-    Tyre seats between the bead lips (``tire_width()`` wide).
+    Behind the socket the hub has an ``axle_bore``: a screw clearance hole
+    when a tapped steel axle stops at the socket (default), or a through hole
+    when the axle (e.g. a dowel) runs to the outer face and takes a wood
+    screw in its end.  The tyre seats between the bead lips.
     """
 
     def __init__(
@@ -35,12 +36,19 @@ class Rim(EfficioObject):
         hex_across_flats: Measure,
         hex_depth: Measure,
         spokes: int,
+        spoke_thickness: Measure = Millimeter(6.0),
+        axle_bore: Measure = Millimeter(2 * M3_CLEARANCE_RADIUS_MM),
     ):
         self.diameter = diameter
         self.width = width
         self.hex_across_flats = hex_across_flats
         self.hex_depth = hex_depth
         self.spokes = spokes
+        self.spoke_thickness = spoke_thickness
+        self.axle_bore = axle_bore
+
+    def hub_length(self) -> float:
+        return self.hex_depth.value() + self.spoke_thickness.value()
 
     def hub_radius(self) -> float:
         return hex_across_corners(self.hex_across_flats.value()) / 2 + 3.0
@@ -52,7 +60,8 @@ class Rim(EfficioObject):
         radius = self.diameter.value() / 2
         width = self.width.value()
         hex_depth = self.hex_depth.value()
-        hub_length = hex_depth + SPOKE_THICKNESS_MM
+        hub_length = self.hub_length()
+        spoke_thickness = self.spoke_thickness.value()
         inner = radius - RIM_WALL_MM
 
         rim = cylinder(radius, 0.0, width).cut(cylinder(inner, -1.0, width + 1.0))
@@ -69,11 +78,11 @@ class Rim(EfficioObject):
         for i in range(self.spokes):
             spoke = prism(
                 [(0.0, -half), (span, -half), (span, half), (0.0, half)],
-                hub_length - SPOKE_THICKNESS_MM,
+                hub_length - spoke_thickness,
                 hub_length,
             ).rotate((0, 0, 0), (0, 0, 1), 360.0 * i / self.spokes)
             rim = rim.union(spoke)
 
         rim = rim.cut(hex_socket_cutter(self.hex_across_flats.value(), hex_depth))
-        rim = rim.cut(cylinder(M3_CLEARANCE_RADIUS_MM, -1.0, hub_length + 1.0))
+        rim = rim.cut(cylinder(self.axle_bore.value() / 2, -1.0, hub_length + 1.0))
         return wrap(rim)

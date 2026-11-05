@@ -9,6 +9,7 @@ from typing import List, Sequence
 import cadquery as cq
 
 from efficio.objects.powertrain.bearings import BallBearing
+from efficio.objects.powertrain.fits import CROSS_PIN_SLOT_CLEARANCE_MM
 from efficio.objects.powertrain.planar import Point
 from efficio.objects.shapes import Orientation, Shape, WorkplaneShape
 
@@ -118,3 +119,15 @@ def bearing_seat_cutter(
     depth = min(bearing.width, thickness + 1.0)
     pocket = cylinder(bearing.seat_radius, -1.0, depth, x, y)
     return pocket.union(cylinder(through_radius, -1.0, thickness + 1.0, x, y))
+
+
+def cross_pin_slot_cutter(
+    pin_diameter: float, pin_length: float, face_z: float, toward_positive_z: bool
+) -> cq.Workplane:
+    """Slot across a bore, on the face at ``face_z``, that seats a cross pin
+    driven through the shaft along local X."""
+    width = pin_diameter + 2 * CROSS_PIN_SLOT_CLEARANCE_MM
+    half = pin_length / 2 + 0.2
+    if toward_positive_z:
+        return box(-half, half, -width / 2, width / 2, face_z - 1.0, face_z + width)
+    return box(-half, half, -width / 2, width / 2, face_z - width, face_z + 1.0)

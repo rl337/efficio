@@ -29,6 +29,7 @@ def _gear(
     d_flat: bool,
     hub_diameter: float = 0.0,
     hub_length: float = 0.0,
+    cross_pin: bool = False,
 ) -> SpurGear:
     return SpurGear(
         MetricModule(geometry.module),
@@ -40,19 +41,30 @@ def _gear(
         hub_diameter=Millimeter(hub_diameter),
         hub_length=Millimeter(hub_length),
         backlash=Millimeter(geometry.backlash),
+        cross_pin_diameter=Millimeter(
+            geometry.axle_cross_pin_diameter if cross_pin else 0.0
+        ),
+        cross_pin_length=Millimeter(
+            geometry.axle_cross_pin_length if cross_pin else 0.0
+        ),
     )
 
 
 def sun_gear(geometry: SpurDifferentialGeometry) -> SpurGear:
-    """Output gear on a D-flat half-shaft; its hub is the thrust spacer."""
+    """Output gear on the half-shaft; its hub is the thrust spacer.
+
+    D-flat bore for steel axles, or a cross-pin slot on the outer (z = 0)
+    face for round axles such as dowels.
+    """
     return _gear(
         geometry,
         geometry.sun_teeth,
         geometry.sun_width,
         geometry.axle_diameter,
-        True,
+        not geometry.pinned_axles,
         hub_diameter=2 * geometry.sun_hub_radius,
         hub_length=geometry.sun_hub_length,
+        cross_pin=geometry.pinned_axles,
     )
 
 

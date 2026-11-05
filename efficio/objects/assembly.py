@@ -49,7 +49,9 @@ class PartSpec:
 
     @property
     def fabricated_file(self) -> bool:
-        return not self.purchased and Process.ROD_STOCK not in self.processes
+        """Whether the part gets an STL/DXF (stock and bought parts do not)."""
+        stock = {Process.ROD_STOCK, Process.DOWEL_STOCK, Process.PURCHASED}
+        return not stock.intersection(self.processes)
 
     def shape(self) -> Shape:
         result = WorkplaneShape(Orientation.Front)
@@ -113,6 +115,29 @@ class Assembly:
             solid = solid.rotate(origin, cq.Vector(0, 0, 1), spin)
             solid = solid.rotate(origin, cq.Vector(1, 0, 0), 90)
         solid = solid.translate(cq.Vector(x, y_from, z))
+        placed = PlacedPart(label, spec.name, solid)
+        self.instances.append(placed)
+        return placed
+
+    def place_radial(
+        self,
+        spec: PartSpec,
+        label: str,
+        x: float,
+        y: float,
+        z: float,
+        angle: float,
+    ) -> PlacedPart:
+        """Centre a part whose length runs along local +Z across a Y-axis
+        shaft at (x, y, z), pointing at ``angle`` in the XZ plane (from +X
+        toward +Z), e.g. a cross pin through an axle."""
+        origin = cq.Vector(0, 0, 0)
+        solid = self.register(spec).solid()
+        box = solid.BoundingBox()
+        solid = solid.translate(cq.Vector(0, 0, -(box.zmin + box.zmax) / 2))
+        solid = solid.rotate(origin, cq.Vector(0, 1, 0), 90)  # local Z -> +X
+        solid = solid.rotate(origin, cq.Vector(0, 1, 0), -angle)
+        solid = solid.translate(cq.Vector(x, y, z))
         placed = PlacedPart(label, spec.name, solid)
         self.instances.append(placed)
         return placed

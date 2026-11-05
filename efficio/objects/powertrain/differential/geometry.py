@@ -16,6 +16,7 @@ import math
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
+from efficio.objects.powertrain.fits import cross_pin_offset
 from efficio.objects.powertrain.gears.involute import (
     InvoluteGearGeometry,
     centre_distance,
@@ -49,6 +50,14 @@ class SpurDifferentialGeometry:
     axle_diameter: float = 5.0
     planet_pin_diameter: float = 3.0
     ring_wall: float = 2.5
+    # Output drive: 0 = D-flat steel axle; > 0 = round axle (e.g. a dowel)
+    # driven through a cross pin seated in a slot on the sun's outer face.
+    axle_cross_pin_diameter: float = 0.0
+    axle_cross_pin_length: float = 9.0
+
+    @property
+    def pinned_axles(self) -> bool:
+        return self.axle_cross_pin_diameter > 0
 
     def gear(self, teeth: int) -> InvoluteGearGeometry:
         return InvoluteGearGeometry(
@@ -134,6 +143,15 @@ class SpurDifferentialGeometry:
         return Span(self.sun_b.end - self.planet_length, self.sun_b.end)
 
     @property
+    def sun_a_pin(self) -> float:
+        """Carrier-local axial position of sun A's cross pin (pinned axles)."""
+        return self.sun_a.start + cross_pin_offset(self.axle_cross_pin_diameter)
+
+    @property
+    def sun_b_pin(self) -> float:
+        return self.sun_b.end - cross_pin_offset(self.axle_cross_pin_diameter)
+
+    @property
     def left_axle_end(self) -> float:
         """Inboard end of the left output shaft (inside sun A's hub)."""
         return self.sun_a.end + self.sun_hub_length - 0.5
@@ -191,6 +209,14 @@ class SpurDifferentialGeometry:
             issues.append("sun hub too thin around half-shaft")
         if self.hub_diameter / 2.0 < self.axle_diameter / 2.0 + 1.5:
             issues.append("carrier hub too thin around half-shaft")
+        if self.pinned_axles:
+            sun_root = self.gear(self.sun_teeth).root_radius
+            if self.axle_cross_pin_length / 2 + 0.2 > sun_root - 1.0:
+                issues.append("axle cross pin too long for the sun gear")
+            if self.axle_cross_pin_length <= self.axle_diameter + 1.0:
+                issues.append("axle cross pin too short to engage the sun slot")
+            if self.axle_cross_pin_diameter > self.axle_diameter / 2.5:
+                issues.append("axle cross pin too thick for the axle")
         if self.sun_teeth % self.planet_pairs:
             issues.append("sun teeth must divide evenly between planet pairs")
         overlap = self.p1_span.end - self.p2_span.start

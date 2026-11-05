@@ -7,7 +7,7 @@ which ones the layout needs, where they go and how they are made.
 
 import argparse
 import logging
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from efficio.measures import Millimeter
 from efficio.objects.assembly import Assembly, PartSpec
@@ -30,7 +30,7 @@ from efficio.objects.powertrain.engine import (
 from efficio.objects.powertrain.fits import Process
 from efficio.objects.powertrain.gearbox import BearingPlate
 from efficio.objects.powertrain.gears import CompoundSpurGear, SpurGear
-from efficio.objects.powertrain.layout import DrivetrainLayout, PlateSide
+from efficio.objects.powertrain.layout import AxleStock, DrivetrainLayout, PlateSide
 from efficio.objects.powertrain.planar import Span
 from efficio.objects.powertrain.shafts import Shaft, Standoff
 from efficio.objects.powertrain.wheels import Rim, Tire
@@ -39,6 +39,7 @@ from efficio.objects.shapes import Shape
 PRINT = Process.FDM_PRINT
 CNC = Process.CNC_PLATE
 ROD = Process.ROD_STOCK
+DOWEL = Process.DOWEL_STOCK
 BOUGHT = Process.PURCHASED
 
 PLATE_MATERIAL = "6061 aluminium plate or PETG"
@@ -443,6 +444,58 @@ def add_differential(
 
 
 # ------------------------------------------------------------ axles and wheels
+def _half_shaft(layout: DrivetrainLayout, name: str, span: Span) -> PartSpec:
+    """Steel D-flat rod, or a cross-drilled hardwood dowel."""
+    if not layout.dowel_axles:
+        return rod_stock(
+            name, layout.axle_diameter, span, True, "Drill & tap M3 in wheel end"
+        )
+    side = "left" if name.endswith("left") else "right"
+    pins = layout.axle_cross_pins()
+    holes = sorted(
+        abs(pins[f"{where}_{side}"] - span.start) for where in ("sun", "wheel")
+    )
+    dowel = layout.axle_dowel.spec
+    return PartSpec(
+        name,
+        Shaft(
+            Millimeter(dowel.diameter),
+            Millimeter(span.length),
+            False,
+            holes,
+            Millimeter(layout.cross_pin_diameter),
+        ),
+        (DOWEL,),
+        dowel.description(),
+        f"Cut {span.length:.0f} mm; drill {layout.cross_pin_diameter:g} mm cross holes "
+        f"at {holes[0]:.1f} and {holes[1]:.1f} mm from the inboard end",
+    )
+
+
+def add_cross_pins(
+    assembly: Assembly, layout: DrivetrainLayout, phases: Dict[str, float]
+) -> None:
+    """Pins that drive the dowel axles through the sun gears and wheel hubs."""
+    pins = layout.axle_cross_pins()
+    if not pins:
+        return
+    ax, az = layout.axle_centre
+    pin = PartSpec(
+        "axle_cross_pin",
+        Shaft(
+            Millimeter(layout.cross_pin_diameter),
+            Millimeter(layout.cross_pin_length),
+            False,
+        ),
+        (ROD,),
+        f"{layout.cross_pin_diameter:g} mm steel rod (or a cut nail)",
+        f"Cut {layout.cross_pin_length:g} mm; tap through the dowel into the slot",
+    )
+    for where, y in pins.items():
+        side = where.split("_")[1]
+        assembly.place_radial(pin, f"axle_cross_pin_{where}", ax, y, az, phases[side])
+
+
 def add_axles_and_wheels(
     assembly: Assembly, layout: DrivetrainLayout, crank_angle: float
 ) -> None:
@@ -450,25 +503,15 @@ def add_axles_and_wheels(
     phases = layout.gear_phases(crank_angle)
     sun_a = phases["sun_a"]
     sun_b = layout.sun_b_phase(layout.planet_poses(phases["carrier"], sun_a))
+    spin = {"left": sun_a, "right": sun_b}
     axle = layout.axle_diameter
     place = assembly.place_axial
 
-    left = rod_stock(
-        "half_shaft_left",
-        axle,
-        layout.left_half_shaft,
-        True,
-        "Drill & tap M3 in wheel end",
-    )
-    right = rod_stock(
-        "half_shaft_right",
-        axle,
-        layout.right_half_shaft,
-        True,
-        "Drill & tap M3 in wheel end",
-    )
+    left = _half_shaft(layout, "half_shaft_left", layout.left_half_shaft)
+    right = _half_shaft(layout, "half_shaft_right", layout.right_half_shaft)
     place(left, "half_shaft_left", ax, az, layout.left_half_shaft.start, True, sun_a)
     place(right, "half_shaft_right", ax, az, layout.right_half_shaft.start, True, sun_b)
+    add_cross_pins(assembly, layout, spin)
 
     pillow = PartSpec(
         "axle_pillow_block",
@@ -480,21 +523,25 @@ def add_axles_and_wheels(
         ),
         (PRINT,),
         "PETG",
-        "Bolts to your chassis rail",
+        f"{layout.axle_bearing.spec.designation} bearing; bolts to your chassis rail",
     )
     place(pillow, "axle_pillow_left", ax, az, layout.left_pillow_block.end, False)
     place(pillow, "axle_pillow_right", ax, az, layout.right_pillow_block.end, False)
 
+    pin_diameter = layout.cross_pin_diameter if layout.dowel_axles else 0.0
     adapter = PartSpec(
         "wheel_hex_adapter",
         HexWheelAdapter(
             Millimeter(layout.hex_across_flats),
             Millimeter(layout.hex_adapter_length),
             Millimeter(axle),
+            Millimeter(pin_diameter),
+            Millimeter(layout.cross_pin_length if pin_diameter else 0.0),
         ),
         (PRINT, CNC),
         "Nylon / aluminium",
-        f"{layout.hex_across_flats:g} mm hex",
+        f"{layout.hex_across_flats:g} mm hex"
+        + ("; cross-pin slot faces the wheel" if pin_diameter else ""),
     )
     rim_part = Rim(
         Millimeter(layout.rim_diameter),
@@ -502,6 +549,8 @@ def add_axles_and_wheels(
         Millimeter(layout.hex_across_flats),
         Millimeter(layout.hex_adapter_length),
         layout.rim_spokes,
+        Millimeter(layout.rim_spoke_thickness),
+        Millimeter(layout.rim_axle_bore),
     )
     rim = PartSpec("wheel_rim", rim_part, (PRINT,), "PETG", "Print inboard face down")
     tire = PartSpec(
@@ -528,9 +577,14 @@ def add_axles_and_wheels(
     assembly.add_hardware(
         f"{layout.axle_bearing.spec.designation} ball bearing", 2, "Axle pillow blocks"
     )
-    assembly.add_hardware(
-        "M3 x 10 socket cap screw + washer", 2, "Wheel retention into axle end"
-    )
+    if layout.dowel_axles:
+        assembly.add_hardware(
+            "#4 x 1/2 in wood screw + washer", 2, "Wheel retention into dowel end grain"
+        )
+    else:
+        assembly.add_hardware(
+            "M3 x 10 socket cap screw + washer", 2, "Wheel retention into axle end"
+        )
     assembly.add_hardware("M3 x 12 socket cap screw", 4, "Pillow blocks to chassis")
 
 
@@ -565,15 +619,25 @@ class RearTransaxle(EfficioObject):
     Exposed to the command line, e.g.::
 
         python -m efficio --object RearTransaxle \\
-            --params crank_angle=0 --params cylinders=2 --png rear_transaxle.png
+            --params crank_angle=0 --params cylinders=2 \\
+            --params axle_stock=WOOD_DOWEL --png rear_transaxle.png
     """
 
-    def __init__(self, crank_angle: float, cylinders: int = 2):
+    def __init__(
+        self,
+        crank_angle: float,
+        cylinders: int = 2,
+        axle_stock: AxleStock = AxleStock.STEEL_D_FLAT,
+    ):
         self.crank_angle = crank_angle
         self.cylinders = cylinders
+        self.axle_stock = axle_stock
 
     def layout(self) -> DrivetrainLayout:
-        layout = DrivetrainLayout()
+        if self.axle_stock is AxleStock.WOOD_DOWEL:
+            layout = DrivetrainLayout.with_dowel_axles()
+        else:
+            layout = DrivetrainLayout()
         layout.engine.cylinders = self.cylinders
         return layout
 
