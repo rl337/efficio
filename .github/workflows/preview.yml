@@ -22,3 +22,12 @@ jobs:
         with:
           name: previews
           path: previews/*.png
+      - name: Echo previews into the log (for clients without artifact access)
+        run: |
+          for f in previews/*.png; do
+            echo "::group::base64 $f"
+            echo "BEGIN-PREVIEW $f"
+            base64 -w 120 "$f"
+            echo "END-PREVIEW $f"
+            echo "::endgroup::"
+          done
