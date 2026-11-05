@@ -4,15 +4,13 @@ from typing import List, Optional
 
 import cadquery as cq
 
-from efficio.measures import Measure
+from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
 from efficio.objects.gears import MetricModule, PressureAngle
 from efficio.objects.powertrain.gears.face import FaceGearGeometry
 from efficio.objects.powertrain.gears.spur import DEFAULT_BACKLASH, bore_allowance
 from efficio.objects.powertrain.profiles import bore_cutter, cylinder, wrap
 from efficio.objects.shapes import Shape
-
-BODY_RIM_MM = 0.5
 
 
 class CrownGear(EfficioObject):
@@ -33,6 +31,7 @@ class CrownGear(EfficioObject):
         pressure_angle: PressureAngle = PressureAngle.HIGH_TORQUE,
         backlash: Measure = DEFAULT_BACKLASH,
         addendum_coefficient: float = 0.8,
+        body_rim: Measure = Millimeter(0.5),
     ):
         self.module = module
         self.teeth = teeth
@@ -43,6 +42,7 @@ class CrownGear(EfficioObject):
         self.pressure_angle = pressure_angle
         self.backlash = backlash
         self.addendum_coefficient = addendum_coefficient
+        self.body_rim = body_rim
 
     def geometry(self) -> FaceGearGeometry:
         return FaceGearGeometry(
@@ -56,7 +56,7 @@ class CrownGear(EfficioObject):
 
     @property
     def body_radius(self) -> float:
-        return self.geometry().outer_radius + BODY_RIM_MM
+        return self.geometry().outer_radius + self.body_rim.value()
 
     @property
     def pitch_plane(self) -> float:

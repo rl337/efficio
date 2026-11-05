@@ -14,10 +14,6 @@ from efficio.objects.powertrain.planar import hull_of_circles
 from efficio.objects.powertrain.profiles import box, cylinder, prism, wrap, y_cylinder
 from efficio.objects.shapes import Shape
 
-PISTON_WALL_MM = 2.0
-PISTON_CROWN_MM = 4.0
-PISTON_BOSS_HALF_SIZE_MM = 4.0
-
 
 class ConnectingRod(EfficioObject):
     """One-piece rod: big end on the origin, small end on local +Y, centred in Z."""
@@ -81,6 +77,12 @@ class Piston(EfficioObject):
         wrist_pin_diameter: Measure,
         boss_gap: Measure,
         clearance: Measure = Millimeter(0.15),
+        wall: Measure = Millimeter(2.0),
+        crown: Measure = Millimeter(4.0),
+        boss_half_size: Measure = Millimeter(4.0),
+        ring_groove_from_crown: Measure = Millimeter(2.0),
+        ring_groove_width: Measure = Millimeter(1.0),
+        ring_groove_depth: Measure = Millimeter(0.7),
     ):
         self.bore = bore
         self.height = height
@@ -88,6 +90,12 @@ class Piston(EfficioObject):
         self.wrist_pin_diameter = wrist_pin_diameter
         self.boss_gap = boss_gap
         self.clearance = clearance
+        self.wall = wall
+        self.crown = crown
+        self.boss_half_size = boss_half_size
+        self.ring_groove_from_crown = ring_groove_from_crown
+        self.ring_groove_width = ring_groove_width
+        self.ring_groove_depth = ring_groove_depth
 
     @classmethod
     def from_engine(cls, engine: EngineGeometry) -> "Piston":
@@ -98,18 +106,24 @@ class Piston(EfficioObject):
             Millimeter(engine.wrist_pin_diameter),
             Millimeter(engine.piston_boss_gap),
             Millimeter(engine.piston_clearance),
+            Millimeter(engine.piston_wall),
+            Millimeter(engine.piston_crown),
+            Millimeter(engine.piston_boss_half_size),
+            Millimeter(engine.ring_groove_from_crown),
+            Millimeter(engine.ring_groove_width),
+            Millimeter(engine.ring_groove_depth),
         )
 
     def shape(self) -> Optional[Shape]:
         radius = self.bore.value() / 2 - self.clearance.value()
         top = self.compression_height.value()
         bottom = top - self.height.value()
-        inner = radius - PISTON_WALL_MM
+        inner = radius - self.wall.value()
         gap = self.boss_gap.value()
-        boss = PISTON_BOSS_HALF_SIZE_MM
+        boss = self.boss_half_size.value()
 
         piston = cylinder(radius, bottom, top)
-        piston = piston.cut(cylinder(inner, bottom - 1, top - PISTON_CROWN_MM))
+        piston = piston.cut(cylinder(inner, bottom - 1, top - self.crown.value()))
         for sign in (-1.0, 1.0):
             y0, y1 = sorted((sign * gap, sign * (inner + 0.5)))
             piston = piston.union(
@@ -118,9 +132,15 @@ class Piston(EfficioObject):
                 )
             )
         # Compression ring groove.
+        groove_top = top - self.ring_groove_from_crown.value()
+        groove_bottom = groove_top - self.ring_groove_width.value()
         piston = piston.cut(
-            cylinder(radius + 1, top - 3.0, top - 2.0).cut(
-                cylinder(radius - 0.7, top - 3.5, top - 1.5)
+            cylinder(radius + 1, groove_bottom, groove_top).cut(
+                cylinder(
+                    radius - self.ring_groove_depth.value(),
+                    groove_bottom - 0.5,
+                    groove_top + 0.5,
+                )
             )
         )
         pin = self.wrist_pin_diameter.value() / 2 + PRESS_CLEARANCE_MM

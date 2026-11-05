@@ -8,7 +8,7 @@ from efficio.examples.mold_tooling import (
 )
 from efficio.measures import Millimeter
 from efficio.objects.gears import SphericalGear
-from efficio.objects.mold_tooling import (
+from efficio.objects.molds import (
     PRUSA_MK4,
     BuildVolume,
     CottlePurpose,

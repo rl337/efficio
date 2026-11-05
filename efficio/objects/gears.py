@@ -248,13 +248,13 @@ class AbstractTrapezoidalGearTooth(AbstractGearTooth):
         self._top_width_ratio = top_width_ratio
 
     def calculate_pitch_radius(self) -> float:
-        return self.gear.get_maximum_radius().value() * 0.85
+        return self.gear.get_maximum_radius().value() * self.gear.pitch_radius_ratio
 
     def calculate_addendum(self) -> float:
-        return self.calculate_circular_pitch() * 0.7 * 2.0 / 3.0
+        return self.calculate_circular_pitch() * self.gear.tooth_depth_ratio * 2.0 / 3.0
 
     def calculate_dedendum(self) -> float:
-        return self.calculate_circular_pitch() * 0.7 / 3.0
+        return self.calculate_circular_pitch() * self.gear.tooth_depth_ratio / 3.0
 
     def calculate_tooth_width(self) -> float:
         return self.calculate_chord_width() / 2
@@ -372,7 +372,9 @@ class _RectangularGearTooth(AbstractTrapezoidalGearTooth):
 
 class _InvoluteGearTooth(AbstractGearTooth):
     def calculate_pitch_radius(self) -> float:
-        return float(self.gear.get_maximum_radius().value()) * 0.85
+        return (
+            float(self.gear.get_maximum_radius().value()) * self.gear.pitch_radius_ratio
+        )
 
 
 class GearToothType(Enum):
@@ -390,7 +392,16 @@ class GearToothType(Enum):
 
 
 class AbstractGear(AbstractCogwheel):
+    """Prismatic gear whose teeth are sized from its maximum radius.
+
+    ``pitch_radius_ratio`` places the pitch circle as a fraction of the
+    maximum radius; ``tooth_depth_ratio`` is total tooth depth as a fraction
+    of the circular pitch (two thirds addendum, one third dedendum).
+    """
+
     _gear_tooth_type: GearToothType
+    pitch_radius_ratio: float = 0.85
+    tooth_depth_ratio: float = 0.7
 
     def __init__(
         self,
@@ -438,13 +449,31 @@ class AbstractGear(AbstractCogwheel):
 
 
 class RectangularGear(AbstractGear):
-    def __init__(self, radius: Measure, tooth_count: int, thickness: Measure):
+    def __init__(
+        self,
+        radius: Measure,
+        tooth_count: int,
+        thickness: Measure,
+        pitch_radius_ratio: float = 0.85,
+        tooth_depth_ratio: float = 0.7,
+    ):
         super().__init__(radius, tooth_count, thickness, GearToothType.RECTANGULAR)
+        self.pitch_radius_ratio = pitch_radius_ratio
+        self.tooth_depth_ratio = tooth_depth_ratio
 
 
 class TrapezoidalGear(AbstractGear):
-    def __init__(self, radius: Measure, tooth_count: int, thickness: Measure):
+    def __init__(
+        self,
+        radius: Measure,
+        tooth_count: int,
+        thickness: Measure,
+        pitch_radius_ratio: float = 0.85,
+        tooth_depth_ratio: float = 0.7,
+    ):
         super().__init__(radius, tooth_count, thickness, GearToothType.TRAPEZOIDAL)
+        self.pitch_radius_ratio = pitch_radius_ratio
+        self.tooth_depth_ratio = tooth_depth_ratio
 
 
 class _SphericalGearAxis(AbstractGear):
@@ -477,11 +506,19 @@ class SphericalGear(AbstractGear):
     spherical gear while the requested maximum radius remains a hard envelope.
     """
 
-    _TOOTH_HEIGHT_RATIO = 0.10
-    _LATITUDE_SEGMENTS = 48
-    _LONGITUDE_SEGMENTS_PER_TOOTH = 8
-
-    def __init__(self, radius: Measure, tooth_count: int):
+    def __init__(
+        self,
+        radius: Measure,
+        tooth_count: int,
+        tooth_height_ratio: float = 0.10,
+        latitude_segments: int = 48,
+        longitude_segments_per_tooth: int = 8,
+    ):
+        if not 0.0 < tooth_height_ratio < 0.5:
+            raise ValueError("tooth_height_ratio must be between 0 and 0.5")
+        self.tooth_height_ratio = tooth_height_ratio
+        self.latitude_segments = latitude_segments
+        self.longitude_segments_per_tooth = longitude_segments_per_tooth
         if tooth_count < 4:
             raise ValueError("SphericalGear requires at least four teeth")
         super().__init__(
@@ -489,7 +526,7 @@ class SphericalGear(AbstractGear):
         )
 
     def _root_radius(self) -> float:
-        return self.get_maximum_radius().value() * (1.0 - self._TOOTH_HEIGHT_RATIO)
+        return self.get_maximum_radius().value() * (1.0 - self.tooth_height_ratio)
 
     def _tooth_wave(self, phase: float) -> float:
         """Smooth periodic tooth height in [0, 1] for an angular phase."""
@@ -516,9 +553,9 @@ class SphericalGear(AbstractGear):
 
     def _surface_solid(self) -> cq.Solid:
         """Tessellate the radial field into one watertight OpenCascade solid."""
-        latitude_segments = self._LATITUDE_SEGMENTS
+        latitude_segments = self.latitude_segments
         longitude_segments = max(
-            self.get_tooth_count() * self._LONGITUDE_SEGMENTS_PER_TOOTH, 64
+            self.get_tooth_count() * self.longitude_segments_per_tooth, 64
         )
 
         north_radius = self._surface_radius(0.0, 0.0, 1.0)

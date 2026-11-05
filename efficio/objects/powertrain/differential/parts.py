@@ -12,8 +12,8 @@ from efficio.objects.base import EfficioObject
 from efficio.objects.gears import MetricModule, PressureAngle
 from efficio.objects.powertrain.differential.geometry import SpurDifferentialGeometry
 from efficio.objects.powertrain.fits import (
-    M3_NUT_POCKET_ACROSS_CORNERS_MM,
-    M3_NUT_POCKET_DEPTH_MM,
+    NUT_POCKET_CLEARANCE_MM,
+    NUT_POCKET_DEPTH_CLEARANCE_MM,
     RUNNING_CLEARANCE_MM,
 )
 from efficio.objects.powertrain.gears.spur import SpurGear
@@ -69,7 +69,7 @@ def sun_gear(geometry: SpurDifferentialGeometry) -> SpurGear:
 
 
 def planet_gear(geometry: SpurDifferentialGeometry) -> SpurGear:
-    """Long planet running on the planet pin (an M3 bolt shank)."""
+    """Long planet running on the planet pin (a bolt shank, geometry.planet_bolt)."""
     return _gear(
         geometry,
         geometry.planet_teeth,
@@ -108,14 +108,17 @@ class SpurDifferentialCarrierHalf(EfficioObject):
             cylinder(g.axle_diameter / 2.0 + RUNNING_CLEARANCE_MM, -1.0, hub_end + 1)
         )
         pin_hole = g.planet_pin_diameter / 2.0 + RUNNING_CLEARANCE_MM
+        bolt = g.planet_bolt.spec
+        pocket = bolt.pocket_across_corners(NUT_POCKET_CLEARANCE_MM)
+        pocket_depth = bolt.pocket_depth(NUT_POCKET_DEPTH_CLEARANCE_MM)
         for _, angle in g.planet_carrier_angles():
             x = g.planet_orbit_radius * math.cos(math.radians(angle))
             y = g.planet_orbit_radius * math.sin(math.radians(angle))
             body = body.cut(cylinder(pin_hole, -1.0, half + 1.0, x, y))
             body = body.cut(
                 hexagon(
-                    M3_NUT_POCKET_ACROSS_CORNERS_MM,
-                    half - M3_NUT_POCKET_DEPTH_MM,
+                    pocket,
+                    half - pocket_depth,
                     half + 1.0,
                     x,
                     y,

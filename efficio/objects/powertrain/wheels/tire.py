@@ -3,7 +3,7 @@
 import math
 from typing import Optional
 
-from efficio.measures import Measure
+from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
 from efficio.objects.powertrain.profiles import cylinder, prism, wrap
 from efficio.objects.shapes import Shape
@@ -18,19 +18,24 @@ class Tire(EfficioObject):
         inner_diameter: Measure,
         width: Measure,
         tread_blocks: int,
+        groove_depth: Measure = Millimeter(2.5),
+        groove_fraction: float = 1.0 / 3.0,
     ):
         self.outer_diameter = outer_diameter
         self.inner_diameter = inner_diameter
         self.width = width
         self.tread_blocks = tread_blocks
+        self.groove_depth = groove_depth
+        self.groove_fraction = groove_fraction
 
     def shape(self) -> Optional[Shape]:
         outer = self.outer_diameter.value() / 2
         inner = self.inner_diameter.value() / 2
         width = self.width.value()
         tire = cylinder(outer, 0.0, width).cut(cylinder(inner, -1.0, width + 1.0))
-        groove_depth = min(2.5, (outer - inner) / 4)
-        groove_width = 2.0 * math.pi * outer / self.tread_blocks / 3
+        # Never cut more than a quarter of the tyre wall.
+        groove_depth = min(self.groove_depth.value(), (outer - inner) / 4)
+        groove_width = 2.0 * math.pi * outer / self.tread_blocks * self.groove_fraction
         for i in range(self.tread_blocks):
             angle = 360.0 * i / self.tread_blocks
             groove = prism(

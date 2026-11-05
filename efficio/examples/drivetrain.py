@@ -93,7 +93,8 @@ def add_engine(
         EngineBlockHalf(engine, upper=True),
         (PRINT,),
         "PETG / ASA",
-        "Print deck-up; tap M3 holes or use heat-set inserts",
+        f"Print deck-up; tap {engine.fastener.spec.designation} holes"
+        " or use heat-set inserts",
     )
     lower = PartSpec(
         "engine_block_lower",
@@ -248,7 +249,11 @@ def add_engine(
         mounts.append(
             PartSpec(
                 f"engine_mount_{side}",
-                Standoff(Millimeter(gap), Millimeter(8.0)),
+                Standoff(
+                    Millimeter(gap),
+                    Millimeter(8.0),
+                    Millimeter(engine.fastener.spec.clearance_hole),
+                ),
                 (PRINT,),
                 "TPU 95A (absorbs vibration) or PETG",
                 f"{gap:g} mm spacer between the block and the {side} gearbox plate",
@@ -260,22 +265,25 @@ def add_engine(
         )
         assembly.place_along_x(mounts[1], f"engine_mount_right_{index}", y, z, hw, True)
 
+    screw = engine.fastener.spec.designation
     assembly.add_hardware(
         f"{engine.main_bearing.designation} ball bearing",
         2,
         "Crank mains in block end walls",
     )
     assembly.add_hardware(
-        "M3 x 20 socket cap screw", len(engine.head_bolt_positions()), "Cylinder head"
+        f"{screw} x 20 socket cap screw",
+        len(engine.head_bolt_positions()),
+        "Cylinder head",
     )
     assembly.add_hardware(
-        "M3 x 30 socket cap screw",
+        f"{screw} x 30 socket cap screw",
         len(engine.split_bolt_positions()),
         "Block split bolts",
     )
     mount_bolt = layout.plate_thickness + max(gaps) + engine.side_mount_depth - 1
     assembly.add_hardware(
-        f"M3 x {mount_bolt:.0f} socket cap screw",
+        f"{screw} x {mount_bolt:.0f} socket cap screw",
         2 * len(engine.side_mount_positions()),
         "Engine mounts: through the gearbox plate and spacer into the block",
     )
@@ -311,10 +319,14 @@ def add_gearbox(
     gap = layout.plate_gap
     standoff = PartSpec(
         "gearbox_standoff",
-        Standoff(Millimeter(gap.length), Millimeter(2 * layout.standoff_radius)),
+        Standoff(
+            Millimeter(gap.length),
+            Millimeter(2 * layout.standoff_radius),
+            Millimeter(layout.fastener.spec.clearance_hole),
+        ),
         (PRINT,),
         "PETG",
-        "Clamp with M3 threaded rod",
+        f"Clamp with {layout.fastener.spec.designation} threaded rod",
     )
     for i, (sx, sz) in enumerate(layout.standoff_centres()):
         place(standoff, f"gearbox_standoff_{i}", sx, sz, gap.start, True)
@@ -360,6 +372,7 @@ def add_gearbox(
             pressure,
             Millimeter(layout.crown_backlash),
             layout.crown_addendum,
+            Millimeter(layout.crown_body_rim),
         ),
         (PRINT,),
         GEAR_MATERIAL,
@@ -427,7 +440,7 @@ def add_gearbox(
     ):
         assembly.add_hardware(f"{bearing.spec.designation} ball bearing", 2, where)
     assembly.add_hardware(
-        f"M3 threaded rod x {gap.length + 2 * layout.plate_thickness + 6:g} mm + 2 nuts",
+        f"{layout.fastener.spec.designation} threaded rod x {gap.length + 2 * layout.plate_thickness + 6:g} mm + 2 nuts",
         len(layout.standoff_centres()),
         "Gearbox standoff tie rods",
     )
@@ -469,17 +482,18 @@ def add_differential(
     place(sun, "diff_sun_left", ax, az, layout.sun_a.start, True, sun_a)
     place(sun, "diff_sun_right", ax, az, layout.sun_b.end, False, sun_b)
 
+    pin = diff.planet_bolt.spec.designation
     planet = PartSpec(
         "diff_planet_gear",
         planet_gear(diff),
         (PRINT, CNC),
         GEAR_MATERIAL,
-        f"{diff.planet_teeth}T, runs on an M3 bolt",
+        f"{diff.planet_teeth}T, runs on an {pin} bolt",
     )
-    # The planet pins are the shanks of bought M3 bolts: modelled for the
+    # The planet pins are the shanks of bought bolts: modelled for the
     # interference check, listed once in the BOM as hardware.
     bolt = PartSpec(
-        f"M3 x {layout.drum.length:g} socket cap screw (planet pin)",
+        f"{pin} x {layout.drum.length:g} socket cap screw (planet pin)",
         Shaft(
             Millimeter(diff.planet_pin_diameter), Millimeter(layout.drum.length), False
         ),
@@ -499,7 +513,7 @@ def add_differential(
             pose.phase,
         )
         place(bolt, f"diff_planet_pin_{pose.name}", px, pz, layout.drum.start, True)
-    assembly.add_hardware("M3 hex nut", len(poses), "Planet bolts")
+    assembly.add_hardware(f"{pin} hex nut", len(poses), "Planet bolts")
 
 
 # ------------------------------------------------------------ axles and wheels
@@ -507,7 +521,11 @@ def _half_shaft(layout: DrivetrainLayout, name: str, span: Span) -> PartSpec:
     """Steel D-flat rod, or a cross-drilled hardwood dowel."""
     if not layout.dowel_axles:
         return rod_stock(
-            name, layout.axle_diameter, span, True, "Drill & tap M3 in wheel end"
+            name,
+            layout.axle_diameter,
+            span,
+            True,
+            f"Drill & tap {layout.fastener.spec.designation} in wheel end",
         )
     side = "left" if name.endswith("left") else "right"
     pins = layout.axle_cross_pins()
@@ -593,7 +611,11 @@ def add_axles(assembly: Assembly, layout: DrivetrainLayout, crank_angle: float) 
     assembly.add_hardware(
         f"{layout.axle_bearing.spec.designation} ball bearing", 2, "Axle pillow blocks"
     )
-    assembly.add_hardware("M3 x 12 socket cap screw", 4, "Pillow blocks to chassis")
+    assembly.add_hardware(
+        f"{layout.fastener.spec.designation} x 12 socket cap screw",
+        4,
+        "Pillow blocks to chassis",
+    )
 
 
 def add_wheels(
@@ -657,7 +679,9 @@ def add_wheels(
         )
     else:
         assembly.add_hardware(
-            "M3 x 10 socket cap screw + washer", 2, "Wheel retention into axle end"
+            f"{layout.fastener.spec.designation} x 10 socket cap screw + washer",
+            2,
+            "Wheel retention into axle end",
         )
 
 

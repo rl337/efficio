@@ -16,6 +16,7 @@ import math
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
+from efficio.objects.fasteners.threads import MetricThread
 from efficio.objects.powertrain.fits import cross_pin_offset
 from efficio.objects.powertrain.gears.involute import (
     InvoluteGearGeometry,
@@ -48,12 +49,22 @@ class SpurDifferentialGeometry:
     end_wall: float = 5.0
     hub_diameter: float = 10.0
     axle_diameter: float = 5.0
-    planet_pin_diameter: float = 3.0
+    planet_bolt: MetricThread = MetricThread.M3
+    # Clearances: end float of gears in the cavity, radial gap to the cavity
+    # wall, and gap between the sun hub and the planets' tips.
+    axial_clearance: float = 0.5
+    radial_clearance: float = 1.0
+    hub_clearance: float = 1.5
     ring_wall: float = 2.5
     # Output drive: 0 = D-flat steel axle; > 0 = round axle (e.g. a dowel)
     # driven through a cross pin seated in a slot on the sun's outer face.
     axle_cross_pin_diameter: float = 0.0
     axle_cross_pin_length: float = 9.0
+
+    @property
+    def planet_pin_diameter(self) -> float:
+        """Planets run on the shank of the planet bolt."""
+        return self.planet_bolt.spec.major_diameter
 
     @property
     def pinned_axles(self) -> bool:
@@ -91,12 +102,16 @@ class SpurDifferentialGeometry:
 
     @property
     def cavity_radius(self) -> float:
-        return self.planet_orbit_radius + self.gear(self.planet_teeth).tip_radius + 1.0
+        return (
+            self.planet_orbit_radius
+            + self.gear(self.planet_teeth).tip_radius
+            + self.radial_clearance
+        )
 
     @property
     def sun_hub_radius(self) -> float:
         planet = self.gear(self.planet_teeth)
-        return self.planet_orbit_radius - planet.tip_radius - 1.5
+        return self.planet_orbit_radius - planet.tip_radius - self.hub_clearance
 
     @property
     def ring_tip_radius(self) -> float:
@@ -105,7 +120,7 @@ class SpurDifferentialGeometry:
     # ----------------------------------------------------------------- axial
     @property
     def cavity_length(self) -> float:
-        return 2 * self.sun_width + self.mesh_zone + 1.0
+        return 2 * self.sun_width + self.mesh_zone + 2 * self.axial_clearance
 
     @property
     def drum_width(self) -> float:
@@ -117,22 +132,22 @@ class SpurDifferentialGeometry:
 
     @property
     def sun_a(self) -> Span:
-        start = self.cavity.start + 0.5
+        start = self.cavity.start + self.axial_clearance
         return Span(start, start + self.sun_width)
 
     @property
     def sun_b(self) -> Span:
-        end = self.cavity.end - 0.5
+        end = self.cavity.end - self.axial_clearance
         return Span(end - self.sun_width, end)
 
     @property
     def sun_hub_length(self) -> float:
-        return (self.mesh_zone - 1.0) / 2.0
+        return (self.mesh_zone - 2 * self.axial_clearance) / 2.0
 
     @property
     def planet_length(self) -> float:
         # Half a millimetre short of the opposite sun so faces never touch.
-        return self.sun_width + self.mesh_zone - 0.5
+        return self.sun_width + self.mesh_zone - self.axial_clearance
 
     @property
     def p1_span(self) -> Span:
@@ -154,11 +169,11 @@ class SpurDifferentialGeometry:
     @property
     def left_axle_end(self) -> float:
         """Inboard end of the left output shaft (inside sun A's hub)."""
-        return self.sun_a.end + self.sun_hub_length - 0.5
+        return self.sun_a.end + self.sun_hub_length - self.axial_clearance
 
     @property
     def right_axle_end(self) -> float:
-        return self.sun_b.start - self.sun_hub_length + 0.5
+        return self.sun_b.start - self.sun_hub_length + self.axial_clearance
 
     # ---------------------------------------------------------------- phases
     def planet_poses(

@@ -3,9 +3,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional, Tuple
 
+from efficio.machines import PRUSA_MK4, BuildVolume, PrinterProfile
 from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
-from efficio.objects.m3 import M3BoltChannel
+from efficio.objects.fasteners import BoltChannel, MetricThread
 from efficio.objects.shapes import Orientation, Shape, new_shape
 
 
@@ -28,32 +29,21 @@ class SplitKind(Enum):
 
 
 @dataclass(frozen=True)
-class BuildVolume:
-    x: Measure
-    y: Measure
-    z: Measure
+class MoldFeatures:
+    """Sizes of the pour, vent, registration and fastening features.
 
-    def fits(self, dimensions: Tuple[float, float, float]) -> bool:
-        limits = sorted((self.x.value(), self.y.value(), self.z.value()))
-        candidate = sorted(dimensions)
-        return all(size <= limit for size, limit in zip(candidate, limits))
+    Defaults suit small resin and plaster casts on a desktop printer.
+    """
 
-
-@dataclass(frozen=True)
-class PrinterProfile:
-    name: str
-    build_volume: BuildVolume
-
-
-PRUSA_MK4 = PrinterProfile(
-    name="Original Prusa MK4",
-    build_volume=BuildVolume(Millimeter(250), Millimeter(210), Millimeter(220)),
-)
-
-_REGISTRATION_PIN_RADIUS_MM = 2.0
-_REGISTRATION_PIN_LENGTH_MM = 4.0
-_SPRUE_RADIUS_MM = 4.0
-_VENT_RADIUS_MM = 2.0
+    registration_pin_radius: float = 2.0
+    registration_pin_length: float = 4.0
+    sprue_radius: float = 4.0
+    vent_radius: float = 2.0
+    vent_offset: float = 12.0  # sprue to vent, capped by the mold depth
+    channel_depth_fraction: float = 0.85  # how far pour channels reach down
+    registration_offset_fraction: float = 0.25  # pins from the centre
+    fastener_offset_fraction: float = 0.3  # cottle bolts from the centre
+    fastener: MetricThread = MetricThread.M3
 
 
 @dataclass
@@ -93,6 +83,7 @@ class MoldTooling(EfficioObject):
         cottle_wall: Measure = Millimeter(4),
         printer: PrinterProfile = PRUSA_MK4,
         purpose: CottlePurpose = CottlePurpose.BOTH,
+        features: MoldFeatures = MoldFeatures(),
     ):
         self.master = master
         self.polarity = polarity
@@ -100,6 +91,7 @@ class MoldTooling(EfficioObject):
         self.cottle_wall = cottle_wall
         self.printer = printer
         self.purpose = purpose
+        self.features = features
 
     def _has_pour_features(self) -> bool:
         return self.purpose in (
@@ -148,18 +140,26 @@ class MoldTooling(EfficioObject):
         top_z = center[2] + depth / 2
         # Channels extend from above the block through most of its depth so they
         # reliably open the top and reach the master cavity / positive core.
-        channel_height = depth * 0.85
+        channel_height = depth * self.features.channel_depth_fraction
         sprue = (
             new_shape(Orientation.Front)
-            .box(_SPRUE_RADIUS_MM * 2, _SPRUE_RADIUS_MM * 2, channel_height)
+            .box(
+                self.features.sprue_radius * 2,
+                self.features.sprue_radius * 2,
+                channel_height,
+            )
             .translate(center[0], center[1], top_z - channel_height / 2)
         )
         vent = (
             new_shape(Orientation.Front)
-            .box(_VENT_RADIUS_MM * 2, _VENT_RADIUS_MM * 2, channel_height)
+            .box(
+                self.features.vent_radius * 2,
+                self.features.vent_radius * 2,
+                channel_height,
+            )
             .translate(
                 center[0],
-                center[1] + min(depth, 12.0),
+                center[1] + min(depth, self.features.vent_offset),
                 top_z - channel_height / 2,
             )
         )
@@ -197,19 +197,19 @@ class MoldTooling(EfficioObject):
     def _registration_pin_centers(
         self, center: Tuple[float, float, float], length: float, depth: float
     ) -> List[Tuple[float, float, float]]:
-        y_offset = length * 0.25
-        z_offset = depth * 0.25
+        y_offset = length * self.features.registration_offset_fraction
+        z_offset = depth * self.features.registration_offset_fraction
         return [
             (center[0], center[1] + y_offset, center[2] + z_offset),
             (center[0], center[1] - y_offset, center[2] - z_offset),
         ]
 
-    def _m3_fastener_cutter(self, width: float) -> Shape:
+    def _fastener_cutter(self, width: float) -> Shape:
         """Clearance column plus bolt/nut assembly envelope for head seats."""
-        channel = M3BoltChannel(Millimeter(width))
+        channel = BoltChannel(self.features.fastener, Millimeter(width))
         cutter = channel.cut()
         if cutter is None:
-            raise ValueError("M3 bolt channel produced no cut geometry")
+            raise ValueError("bolt channel produced no cut geometry")
 
         assembly = channel.bolt_assembly.shape()
         if assembly is not None:
@@ -217,7 +217,7 @@ class MoldTooling(EfficioObject):
         return cutter
 
     def cottle_sections(self) -> List[ToolingSection]:
-        """Return two functional clamshell sections with registration and M3."""
+        """Return two functional clamshell sections with registration and bolts."""
         width, length, depth, center = self._cottle_dimensions()
         wall = self.cottle_wall.value()
         half_width = width / 2
@@ -255,9 +255,9 @@ class MoldTooling(EfficioObject):
                 pin = (
                     new_shape(Orientation.Front)
                     .box(
-                        _REGISTRATION_PIN_LENGTH_MM,
-                        _REGISTRATION_PIN_RADIUS_MM * 2,
-                        _REGISTRATION_PIN_RADIUS_MM * 2,
+                        self.features.registration_pin_length,
+                        self.features.registration_pin_radius * 2,
+                        self.features.registration_pin_radius * 2,
                     )
                     .translate(pin_x, pin_y, pin_z)
                 )
@@ -266,9 +266,10 @@ class MoldTooling(EfficioObject):
                 else:
                     shell = shell.cut(pin)
 
-            # Transverse M3 fasteners with assembly clearances.
-            for z_offset in (-depth * 0.3, depth * 0.3):
-                cutter = self._m3_fastener_cutter(width)
+            # Transverse fasteners (features.fastener) with assembly clearances.
+            offset = depth * self.features.fastener_offset_fraction
+            for z_offset in (-offset, offset):
+                cutter = self._fastener_cutter(width)
                 cutter = cutter.rotate(0, 90, 0).translate(
                     center[0] - width / 2,
                     center[1],
@@ -281,8 +282,8 @@ class MoldTooling(EfficioObject):
                 top_z = center[2] + depth / 2
                 roof_cut_height = wall * 2
                 for y_off, radius in (
-                    (0.0, _SPRUE_RADIUS_MM),
-                    (min(depth, 12.0), _VENT_RADIUS_MM),
+                    (0.0, self.features.sprue_radius),
+                    (min(depth, self.features.vent_offset), self.features.vent_radius),
                 ):
                     opening = (
                         new_shape(Orientation.Front)

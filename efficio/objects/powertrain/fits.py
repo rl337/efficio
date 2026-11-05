@@ -30,12 +30,6 @@ class Process(Enum):
     PURCHASED = "purchased"
 
 
-# ISO 4762 M3 socket head / ISO 4032 nut envelopes.
-M3_CLEARANCE_RADIUS_MM = 1.7
-M3_TAP_RADIUS_MM = 1.25
-M3_HEAD_RADIUS_MM = 2.75
-M3_HEAD_HEIGHT_MM = 3.0
-M3_NUT_ACROSS_CORNERS_MM = 6.35
-M3_NUT_HEIGHT_MM = 2.4
-M3_NUT_POCKET_ACROSS_CORNERS_MM = M3_NUT_ACROSS_CORNERS_MM + 0.3
-M3_NUT_POCKET_DEPTH_MM = 3.2
+# Pockets that hide a nut or a socket head (sizes come from MetricThread).
+NUT_POCKET_CLEARANCE_MM = 0.3
+NUT_POCKET_DEPTH_CLEARANCE_MM = 0.2

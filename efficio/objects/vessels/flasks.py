@@ -6,20 +6,33 @@ from efficio.objects.shapes import Orientation, Shape, new_shape
 
 
 class TriangularFlaskVase(EfficioObject):
-    """Simple triangular flask master: broad triangular body plus narrow neck."""
+    """Simple triangular flask master: broad triangular body plus narrow neck.
 
-    def __init__(self, width: Measure, height: Measure, depth: Measure, neck: Measure):
+    ``body_fraction`` is the share of the height taken by the body.
+    """
+
+    def __init__(
+        self,
+        width: Measure,
+        height: Measure,
+        depth: Measure,
+        neck: Measure,
+        body_fraction: float = 0.72,
+    ):
+        if not 0.0 < body_fraction < 1.0:
+            raise ValueError("body_fraction must be between 0 and 1")
         self.width = width
         self.height = height
         self.depth = depth
         self.neck = neck
+        self.body_fraction = body_fraction
 
     def shape(self) -> Optional[Shape]:
         width = self.width.value()
         height = self.height.value()
         depth = self.depth.value()
         neck = self.neck.value()
-        body_height = height * 0.72
+        body_height = height * self.body_fraction
 
         body = (
             new_shape(Orientation.Front)

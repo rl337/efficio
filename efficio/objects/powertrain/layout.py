@@ -25,6 +25,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
+from efficio.objects.fasteners.threads import MetricThread
 from efficio.objects.powertrain.bearings import StandardBearing
 from efficio.objects.powertrain.differential.geometry import (
     PlanetPose,
@@ -32,11 +33,7 @@ from efficio.objects.powertrain.differential.geometry import (
 )
 from efficio.objects.powertrain.dowels import StandardDowel
 from efficio.objects.powertrain.engine.geometry import EngineGeometry
-from efficio.objects.powertrain.fits import (
-    M3_CLEARANCE_RADIUS_MM,
-    RUNNING_CLEARANCE_MM,
-    cross_pin_offset,
-)
+from efficio.objects.powertrain.fits import RUNNING_CLEARANCE_MM, cross_pin_offset
 from efficio.objects.powertrain.gearbox.features import PlateHole, PlateSeat
 from efficio.objects.powertrain.gears.face import FaceGearGeometry, crown_mesh_phase
 from efficio.objects.powertrain.gears.involute import (
@@ -122,6 +119,17 @@ class DrivetrainLayout:
     standoff_radius: float = 3.5
     engine_mount_gap: float = 3.0
     engine_clearance: float = 2.0
+    fastener: MetricThread = MetricThread.M3
+    # Gaps between neighbouring parts.
+    axial_gap: float = 1.0  # between parts stacked along the axle
+    stage_gap: float = 1.5  # crown gear to the idler plane
+    crown_clearance: float = 2.0  # crown rim to ring gear and engine block
+    crown_body_rim: float = 0.5  # crown body beyond its teeth
+    pinion_overhang: float = 1.0  # crank pinion past each end of the crown face
+    standoff_margin: float = 2.5  # standoff to the gear it hugs
+    mount_boss_margin: float = 6.0  # plate material around engine mount bolts
+    flywheel_gap: float = 2.0  # block rear face to flywheel
+    min_clearance: float = 1.0  # smallest gap accepted by problems()
     carrier_bearing: StandardBearing = StandardBearing.B6800
     input_bearing: StandardBearing = StandardBearing.B625
     idler_bearing: StandardBearing = StandardBearing.B625
@@ -205,7 +213,7 @@ class DrivetrainLayout:
     @property
     def crown_radius(self) -> float:
         """Outer radius of the crown gear body (teeth stop just inside)."""
-        return self.crown.outer_radius + 0.5
+        return self.crown.outer_radius + self.crown_body_rim
 
     @property
     def reduction_ratio(self) -> float:
@@ -260,7 +268,7 @@ class DrivetrainLayout:
         if abs(self.differential.module - self.module) > 1e-9:
             raise ValueError("idler and ring gear need the same module")
         rise = self.crank_height - self.axle_height
-        reach = self.ring_tip_radius + self.crown_radius + 2.0
+        reach = self.ring_tip_radius + self.crown_radius + self.crown_clearance
         run = math.sqrt(max(reach**2 - rise**2, 0.0))
         return (run, self.crank_height)
 
@@ -293,14 +301,17 @@ class DrivetrainLayout:
     @property
     def engine_front(self) -> float:
         """World x of the engine's front face (just behind the crown gear)."""
-        return self.input_centre[0] - self.crown_radius - 2.0
+        return self.input_centre[0] - self.crown_radius - self.crown_clearance
 
     @property
     def crank_pinion_span(self) -> Span:
         """World x extent of the crank pinion across the crown face."""
         n = self.input_centre[0]
         crown = self.crown
-        return Span(n - crown.outer_radius - 1.0, n - crown.inner_radius + 1.0)
+        overhang = self.pinion_overhang
+        return Span(
+            n - crown.outer_radius - overhang, n - crown.inner_radius + overhang
+        )
 
     @property
     def crank_pinion_box(self) -> Box2:
@@ -333,11 +344,11 @@ class DrivetrainLayout:
     def _standoff_clear(self, point: Point) -> bool:
         r = self.standoff_radius
         for _, centre, radius in self.rotating_envelopes():
-            if distance(point, centre) < radius + r + 1.0:
+            if distance(point, centre) < radius + r + self.min_clearance:
                 return False
-        if _box_distance(point, self.engine_block_box) < r + 1.0:
+        if _box_distance(point, self.engine_block_box) < r + self.min_clearance:
             return False
-        if _box_distance(point, self.crank_pinion_box) < r + 1.0:
+        if _box_distance(point, self.crank_pinion_box) < r + self.min_clearance:
             return False
         return point[1] - r - 4.5 >= 3.0
 
@@ -357,7 +368,7 @@ class DrivetrainLayout:
         sweep = [0, 15, -15, 30, -30, 45, -45, 60, -60, 75, -75, 90, -90]
         centres: List[Point] = []
         for centre, radius, preferred in anchors:
-            reach = radius + r + 2.5
+            reach = radius + r + self.standoff_margin
             for offset in sweep:
                 angle = math.radians(preferred + offset)
                 point = (
@@ -389,7 +400,7 @@ class DrivetrainLayout:
     @property
     def carrier_offset(self) -> float:
         """World y of the differential's carrier-local origin."""
-        return self.plate_left.end + 1.0
+        return self.plate_left.end + self.axial_gap
 
     @property
     def drum(self) -> Span:
@@ -427,15 +438,15 @@ class DrivetrainLayout:
     @property
     def stage_plane(self) -> Span:
         """Plane of the input pinion and idler (must overlap the ring)."""
-        start = self.crown_span.end + 1.5
+        start = self.crown_span.end + self.stage_gap
         return Span(start, start + self.stage_gear_width)
 
     @property
     def plate_right(self) -> Span:
         start = max(
             self.engine_block_span.end + self.engine_mount_gap,
-            self.drum.end + 1.0,
-            self.stage_plane.end + 1.0,
+            self.drum.end + self.axial_gap,
+            self.stage_plane.end + self.axial_gap,
         )
         return Span(start, start + self.plate_thickness)
 
@@ -476,7 +487,7 @@ class DrivetrainLayout:
 
     @property
     def flywheel_local(self) -> Span:
-        start = self.engine.block_length + 2.0
+        start = self.engine.block_length + self.flywheel_gap
         return Span(start, start + self.flywheel_thickness)
 
     @property
@@ -495,7 +506,7 @@ class DrivetrainLayout:
         )
         by_parts = (
             self.carrier_right_hub.end
-            + 1.0
+            + self.axial_gap
             + self.pillow_block_thickness
             + self.wheel_clearance
         )
@@ -528,7 +539,7 @@ class DrivetrainLayout:
     def rim_axle_bore(self) -> float:
         if self.dowel_axles:
             return self.axle_diameter + 2 * RUNNING_CLEARANCE_MM
-        return 2 * M3_CLEARANCE_RADIUS_MM
+        return self.fastener.spec.clearance_hole
 
     @property
     def left_half_shaft(self) -> Span:
@@ -653,10 +664,15 @@ class DrivetrainLayout:
             ),
         ]
         holes = [
-            PlateHole(local(s), M3_CLEARANCE_RADIUS_MM) for s in self.standoff_centres()
+            PlateHole(local(s), self.fastener.spec.clearance_radius)
+            for s in self.standoff_centres()
         ]
         holes += [
-            PlateHole(local(m), M3_CLEARANCE_RADIUS_MM, boss_margin=6.0)
+            PlateHole(
+                local(m),
+                self.fastener.spec.clearance_radius,
+                boss_margin=self.mount_boss_margin,
+            )
             for m in self.engine_mount_centres()
         ]
         return seats, holes
@@ -686,11 +702,14 @@ class DrivetrainLayout:
         if input_pinion.root_radius < self.input_shaft_diameter / 2.0 + 1.5:
             issues.append("input pinion too small for its shaft")
         if distance(self.input_centre, self.axle_centre) < (
-            self.ring_tip_radius + self.crown_radius + 1.0
+            self.ring_tip_radius + self.crown_radius + self.min_clearance
         ):
             issues.append("crown gear hits the differential ring gear")
         idler_reach = distance(self.idler_centre, self.input_centre)
-        if idler_reach < self.crown_radius + self.idler_shaft_diameter / 2 + 1.0:
+        if (
+            idler_reach
+            < self.crown_radius + self.idler_shaft_diameter / 2 + self.min_clearance
+        ):
             issues.append("idler shaft passes through the crown gear")
         if (
             self.stage_plane.end > self.drum.end
@@ -698,10 +717,13 @@ class DrivetrainLayout:
         ):
             issues.append("idler plane does not overlap the ring gear")
         idler = self.gear(self.idler_teeth).tip_radius
-        if _box_distance(self.idler_centre, self.crank_pinion_box) < idler + 1.0:
+        if (
+            _box_distance(self.idler_centre, self.crank_pinion_box)
+            < idler + self.min_clearance
+        ):
             issues.append("idler gear hits the crank pinion")
         tip = input_pinion.tip_radius
-        if self.input_centre[0] - tip - self.crank_pinion_span.end < 1.0:
+        if self.input_centre[0] - tip - self.crank_pinion_span.end < self.min_clearance:
             issues.append("input pinion hits the crank pinion")
         if self.crank_pinion_span.start < self.engine_front + 0.5:
             issues.append("crank pinion overlaps the engine block")
@@ -713,10 +735,10 @@ class DrivetrainLayout:
         for name, centre, radius in self.rotating_envelopes():
             if name == "crown":
                 gap = self.engine_front - (centre[0] - radius)
-                if gap > -1.0:
+                if gap > -self.min_clearance:
                     issues.append("crown gear hits the engine block")
                 continue
-            if _box_distance(centre, block) < radius + 1.0:
+            if _box_distance(centre, block) < radius + self.min_clearance:
                 issues.append(f"{name} gear hits the engine block")
         try:
             standoffs = self.standoff_centres()
@@ -724,18 +746,24 @@ class DrivetrainLayout:
             return issues + [str(error)]
         for s in standoffs:
             for name, centre, radius in self.rotating_envelopes():
-                if distance(s, centre) < radius + self.standoff_radius + 1.0:
+                if (
+                    distance(s, centre)
+                    < radius + self.standoff_radius + self.min_clearance
+                ):
                     issues.append(f"standoff at {s} intersects the {name}")
-            if _box_distance(s, block) < self.standoff_radius + 1.0:
+            if _box_distance(s, block) < self.standoff_radius + self.min_clearance:
                 issues.append(f"standoff at {s} intersects the engine")
-            if _box_distance(s, self.crank_pinion_box) < self.standoff_radius + 1.0:
+            if (
+                _box_distance(s, self.crank_pinion_box)
+                < self.standoff_radius + self.min_clearance
+            ):
                 issues.append(f"standoff at {s} intersects the crank pinion")
             if s[1] - self.standoff_radius - 4.5 < 3.0:
                 issues.append(f"standoff at {s} drags the plates on the ground")
         for span in self.engine_mount_spans():
-            if span.length < 1.0:
+            if span.length < self.min_clearance:
                 issues.append("no room for engine mounts between block and plates")
-        if self.crown_span.start < self.plate_left.end + 1.0:
+        if self.crown_span.start < self.plate_left.end + self.min_clearance:
             issues.append("crown gear hits the left gearbox plate")
         if self.axle_height - self.flywheel_diameter / 2.0 < 5.0:
             issues.append("flywheel too close to ground")
@@ -747,11 +775,14 @@ class DrivetrainLayout:
         issues: List[str] = []
         if self.axle_height - self.ring_tip_radius < 5.0:
             issues.append("ring gear too close to ground")
-        if self.right_half_shaft.start - self.left_half_shaft.end < 1.0:
+        if self.right_half_shaft.start - self.left_half_shaft.end < self.min_clearance:
             issues.append("half-shaft ends collide inside the differential")
-        if self.left_pillow_block.end > self.plate_left.start - 1.0:
+        if self.left_pillow_block.end > self.plate_left.start - self.min_clearance:
             issues.append("left pillow block collides with gearbox")
-        if self.right_pillow_block.start < self.carrier_right_hub.end + 1.0:
+        if (
+            self.right_pillow_block.start
+            < self.carrier_right_hub.end + self.min_clearance
+        ):
             issues.append("right pillow block collides with gearbox")
         if self.rim_diameter >= self.wheel_diameter - 10.0:
             issues.append("tyre too thin")
@@ -775,7 +806,7 @@ class DrivetrainLayout:
         if not diff.pinned_axles:
             issues.append("dowel axles need a cross-pin drive")
         hex_inscribed = self.hex_across_flats / 2
-        if self.cross_pin_length / 2 + 0.2 > hex_inscribed - 1.0:
+        if self.cross_pin_length / 2 + 0.2 > hex_inscribed - self.min_clearance:
             issues.append("axle cross pin breaks out of the hex adapter")
         if self.axle_diameter / 2 + RUNNING_CLEARANCE_MM > hex_inscribed - 2.0:
             issues.append("hex adapter too small for the dowel")

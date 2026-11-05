@@ -10,7 +10,11 @@ Efficio provides a high-level interface for creating 3D CAD models with a focus 
 
 - 3D primitive shapes (boxes, cylinders, spheres)
 - Gear generation (rectangular, trapezoidal, involute, spherical)
-- Hardware components (M3 bolts, nuts)
+- Fasteners driven by a metric thread catalogue (`efficio.objects.fasteners`:
+  `Bolt(MetricThread.M4, length)`, `HexNut`, `BoltChannel`, `M3Bolt(length)`)
+- Enclosures, mold tooling and vessels in their own submodules
+  (`efficio.objects.enclosures`, `.molds`, `.vessels`)
+- Machine build volumes for the Prusa MK4 and Makera Z1 (`efficio.machines`)
 - Export to STL, PNG, and SVG formats
 - Spatial geometry validation
 
@@ -52,7 +56,7 @@ The crown gear is a face gear. At every radius its teeth are the rack that
 meshes with the involute pinion (constant base pitch), and the face width is
 limited to where the teeth are neither radial nor pointed. The crank is a flat-plane
 0/180/180/0 inline-4 layout. The block sits between the gearbox side plates on
-**engine mounts**: spacers and M3 bolts into the block's side walls.
+**engine mounts**: spacers and bolts (M3 by default; `fastener` on the layout) into the block's side walls.
 
 | Group | Parts | Process |
 | --- | --- | --- |
