@@ -1,19 +1,25 @@
-"""World layout of a rear transaxle composed from subsystem geometries.
+"""World layout of a rear transaxle with the engine above the gearbox.
 
-Coordinate system (millimetres):
+Coordinate system (millimetres): ``x`` forward, ``y`` along the axle (left
+to right), ``z`` up, ground at ``z = 0``.
 
-* ``x`` points forward, ``y`` along the axle (left to right), ``z`` up, with
-  the ground plane at ``z = 0``.
-* Every shaft is parallel to ``y``, so the whole power path is spur gears:
-  crankshaft -> crank pinion -> compound idler -> ring gear on the
-  differential carrier -> sun gears -> half-shafts -> wheels.
+Power path:
 
-The engine and differential carry their own geometry
-(:class:`EngineGeometry`, :class:`SpurDifferentialGeometry`); this class only
-positions them, derives shaft centres from gear pitch radii, and checks the
-clearances that only exist once they are put together.
+* The **engine** runs fore-and-aft (crank along ``x``) above the gearbox and
+  extends backward, so adding cylinders makes the car longer, not wider.
+* **Right-angle drive:** the crank pinion (spur, axis ``x``) meshes the
+  **crown gear** on the gearbox input shaft (axis ``y``).
+* **Gearbox:** the input shaft's spur pinion drives an **idler gear**, which
+  drives the **ring gear** on the differential carrier.  The shafts are
+  stacked so the engine block clears the ring and idler below it.
+* **Differential** -> **half-shafts** -> **wheels**.
+
+The engine and differential keep their own geometry
+(:class:`EngineGeometry`, :class:`SpurDifferentialGeometry`).  The engine is
+modelled in its local frame and placed by :meth:`DrivetrainLayout.engine_frame`.
 """
 
+import math
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
@@ -31,6 +37,7 @@ from efficio.objects.powertrain.fits import (
     cross_pin_offset,
 )
 from efficio.objects.powertrain.gearbox.features import PlateHole, PlateSeat
+from efficio.objects.powertrain.gears.face import FaceGearGeometry, crown_mesh_phase
 from efficio.objects.powertrain.gears.involute import (
     InvoluteGearGeometry,
     centre_distance,
@@ -59,18 +66,50 @@ DOWEL_AXLE_BEARINGS: Dict[StandardDowel, Tuple[StandardBearing, StandardBearing]
     StandardDowel.D_3_8: (StandardBearing.R6, StandardBearing.B6802),
 }
 
+Box2 = Tuple[float, float, float, float]  # xmin, zmin, xmax, zmax
+
+
+@dataclass(frozen=True)
+class EngineFrame:
+    """Engine-local -> world: rotate about +Z, then translate.
+
+    Engine-local +Y (the crank, front face at y = 0) maps to world -X, so
+    the engine extends backward from ``origin[0]``.
+    """
+
+    origin: Tuple[float, float, float]
+    rotate_z: float = 90.0
+
+    def to_world(self, local: Tuple[float, float, float]) -> Tuple[float, float, float]:
+        angle = math.radians(self.rotate_z)
+        x, y, z = local
+        wx = x * math.cos(angle) - y * math.sin(angle)
+        wy = x * math.sin(angle) + y * math.cos(angle)
+        return (wx + self.origin[0], wy + self.origin[1], z + self.origin[2])
+
+
+def _box_distance(point: Point, box: Box2) -> float:
+    dx = max(box[0] - point[0], 0.0, point[0] - box[2])
+    dz = max(box[1] - point[1], 0.0, point[1] - box[3])
+    return math.hypot(dx, dz)
+
 
 @dataclass
 class DrivetrainLayout:
-    # Reduction gear train (crank pinion -> idler gear | idler pinion -> ring).
+    # Gear train: crank pinion -> crown | input pinion -> idler -> ring.
     module: float = 1.5
     pressure_angle: float = 25.0
     backlash: float = 0.15
     crank_pinion_teeth: int = 12
-    idler_gear_teeth: int = 36
-    idler_pinion_teeth: int = 12
+    crown_teeth: int = 48
+    crown_addendum: float = 0.8
+    crown_body_thickness: float = 5.0
+    input_pinion_teeth: int = 16
+    idler_teeth: int = 24
     stage_gear_width: float = 10.0
+    input_shaft_diameter: float = 5.0
     idler_shaft_diameter: float = 5.0
+    idler_forward: bool = True
     # Subsystems.
     engine: EngineGeometry = field(default_factory=EngineGeometry)
     differential: SpurDifferentialGeometry = field(
@@ -79,9 +118,11 @@ class DrivetrainLayout:
     # Gearbox frame.
     plate_thickness: float = 8.0
     standoff_radius: float = 3.5
+    engine_mount_gap: float = 3.0
+    engine_clearance: float = 2.0
     carrier_bearing: StandardBearing = StandardBearing.B6800
+    input_bearing: StandardBearing = StandardBearing.B625
     idler_bearing: StandardBearing = StandardBearing.B625
-    crank_support_bearing: StandardBearing = StandardBearing.B608
     # Flywheel.
     flywheel_diameter: float = 50.0
     flywheel_thickness: float = 8.0
@@ -90,6 +131,7 @@ class DrivetrainLayout:
     wheel_diameter: float = 110.0
     rim_diameter: float = 80.0
     wheel_width: float = 30.0
+    min_track_width: float = 240.0
     rim_spokes: int = 5
     tire_tread_blocks: int = 24
     hex_across_flats: float = 12.0
@@ -113,9 +155,9 @@ class DrivetrainLayout:
     ) -> "DrivetrainLayout":
         """Layout whose half-shafts are hardwood dowels.
 
-        The differential's sun gears and the wheel hex adapters are bored for
-        the dowel and driven by a cross pin; the carrier hub and bearings are
-        resized so the dowel passes through.
+        The sun gears and wheel hex adapters are bored for the dowel and
+        driven by a cross pin; the carrier hub and bearings are resized so the
+        dowel passes through.
         """
         if dowel not in DOWEL_AXLE_BEARINGS:
             raise ValueError(f"no bearing pairing for a {dowel.spec.nominal} in dowel")
@@ -148,9 +190,25 @@ class DrivetrainLayout:
         )
 
     @property
+    def crown(self) -> FaceGearGeometry:
+        return FaceGearGeometry(
+            module=self.module,
+            teeth=self.crown_teeth,
+            pinion_teeth=self.crank_pinion_teeth,
+            pressure_angle_degrees=self.pressure_angle,
+            backlash=self.backlash,
+            addendum_coefficient=self.crown_addendum,
+        )
+
+    @property
+    def crown_radius(self) -> float:
+        """Outer radius of the crown gear body (teeth stop just inside)."""
+        return self.crown.outer_radius + 0.5
+
+    @property
     def reduction_ratio(self) -> float:
-        return (self.idler_gear_teeth / self.crank_pinion_teeth) * (
-            self.differential.ring_teeth / self.idler_pinion_teeth
+        return (self.crown_teeth / self.crank_pinion_teeth) * (
+            self.differential.ring_teeth / self.input_pinion_teeth
         )
 
     @property
@@ -171,7 +229,7 @@ class DrivetrainLayout:
     def cross_pin_length(self) -> float:
         return self.differential.axle_cross_pin_length
 
-    # -------------------------------------------------------- planar centres
+    # ------------------------------------------------------ side-view (x, z)
     @property
     def axle_height(self) -> float:
         return self.wheel_diameter / 2.0
@@ -181,49 +239,145 @@ class DrivetrainLayout:
         return (0.0, self.axle_height)
 
     @property
-    def idler_centre(self) -> Point:
-        if abs(self.differential.module - self.module) > 1e-9:
-            raise ValueError("idler pinion and ring gear need the same module")
+    def ring_tip_radius(self) -> float:
+        return self.differential.ring_tip_radius
+
+    @property
+    def crank_height(self) -> float:
+        """Crank axis height: the block bottom just clears the ring gear."""
         return (
-            centre_distance(
-                self.module, self.idler_pinion_teeth, self.differential.ring_teeth
-            ),
-            self.axle_height,
+            self.axle_height
+            + self.ring_tip_radius
+            + self.engine_clearance
+            + self.engine.block_half_width
         )
 
     @property
-    def crank_centre(self) -> Point:
-        return (
-            self.idler_centre[0]
-            + centre_distance(
-                self.module, self.crank_pinion_teeth, self.idler_gear_teeth
-            ),
-            self.axle_height,
+    def input_centre(self) -> Point:
+        """Gearbox input shaft (carries the crown gear), level with the crank."""
+        if abs(self.differential.module - self.module) > 1e-9:
+            raise ValueError("idler and ring gear need the same module")
+        rise = self.crank_height - self.axle_height
+        reach = self.ring_tip_radius + self.crown_radius + 2.0
+        run = math.sqrt(max(reach**2 - rise**2, 0.0))
+        return (run, self.crank_height)
+
+    @property
+    def input_to_idler(self) -> float:
+        return centre_distance(self.module, self.input_pinion_teeth, self.idler_teeth)
+
+    @property
+    def idler_to_ring(self) -> float:
+        return centre_distance(
+            self.module, self.idler_teeth, self.differential.ring_teeth
         )
 
-    def rotating_envelopes(self) -> List[Tuple[Point, float]]:
-        """(centre, tip radius) of every gear between the plates."""
+    @property
+    def idler_centre(self) -> Point:
+        """Where the idler meshes both the input pinion and the ring gear."""
+        a, n = self.axle_centre, self.input_centre
+        d = distance(a, n)
+        r1, r2 = self.idler_to_ring, self.input_to_idler
+        if not abs(r1 - r2) < d < r1 + r2:
+            raise ValueError("idler cannot reach both the input pinion and ring")
+        along = (r1**2 - r2**2 + d**2) / (2 * d)
+        across = math.sqrt(r1**2 - along**2)
+        ux, uz = (n[0] - a[0]) / d, (n[1] - a[1]) / d
+        # Perpendicular pointing forward-down (or backward-up).
+        sign = 1.0 if self.idler_forward else -1.0
+        px, pz = uz * sign, -ux * sign
+        return (a[0] + along * ux + across * px, a[1] + along * uz + across * pz)
+
+    @property
+    def engine_front(self) -> float:
+        """World x of the engine's front face (just behind the crown gear)."""
+        return self.input_centre[0] - self.crown_radius - 2.0
+
+    @property
+    def crank_pinion_span(self) -> Span:
+        """World x extent of the crank pinion across the crown face."""
+        n = self.input_centre[0]
+        crown = self.crown
+        return Span(n - crown.outer_radius - 1.0, n - crown.inner_radius + 1.0)
+
+    @property
+    def crank_pinion_box(self) -> Box2:
+        tip = self.gear(self.crank_pinion_teeth).tip_radius
+        span = self.crank_pinion_span
+        z = self.crank_height
+        return (span.start, z - tip, span.end, z + tip)
+
+    @property
+    def engine_block_box(self) -> Box2:
+        front = self.engine_front
+        hw = self.engine.block_half_width
+        z = self.crank_height
+        top = z + self.engine.deck_height + self.engine.head_thickness
+        return (front - self.engine.block_length, z - hw, front, top)
+
+    def rotating_envelopes(self) -> List[Tuple[str, Point, float]]:
+        """(name, centre, radius) of every gear between the plates."""
         return [
-            (self.axle_centre, self.differential.ring_tip_radius),
-            (self.idler_centre, self.gear(self.idler_gear_teeth).tip_radius),
-            (self.crank_centre, self.gear(self.crank_pinion_teeth).tip_radius),
+            ("ring", self.axle_centre, self.ring_tip_radius),
+            ("idler", self.idler_centre, self.gear(self.idler_teeth).tip_radius),
+            (
+                "input pinion",
+                self.input_centre,
+                self.gear(self.input_pinion_teeth).tip_radius,
+            ),
+            ("crown", self.input_centre, self.crown_radius),
         ]
+
+    def _standoff_clear(self, point: Point) -> bool:
+        r = self.standoff_radius
+        for _, centre, radius in self.rotating_envelopes():
+            if distance(point, centre) < radius + r + 1.0:
+                return False
+        if _box_distance(point, self.engine_block_box) < r + 1.0:
+            return False
+        if _box_distance(point, self.crank_pinion_box) < r + 1.0:
+            return False
+        return point[1] - r - 4.5 >= 3.0
 
     def standoff_centres(self) -> List[Point]:
-        r = self.standoff_radius
-        (ax, az), ring_tip = self.rotating_envelopes()[0]
-        (ix, iz), idler_tip = self.rotating_envelopes()[1]
-        (cx, cz), pinion_tip = self.rotating_envelopes()[2]
-        return [
-            (ax - (ring_tip + r + 2.5), az),
-            (ix, iz - (idler_tip + r + 2.0)),
-            (ix, iz + (idler_tip + r + 2.0)),
-            (cx + pinion_tip + r + 2.5, cz),
-        ]
+        """Tie-rod positions hugging the ring, idler and crown.
 
-    def engine_flange_bolts(self) -> List[Point]:
-        cx, cz = self.crank_centre
-        return [(cx + x, cz + z) for x, z in self.engine.flange_bolt_offsets()]
+        For each gear, the first clear spot found sweeping around it from the
+        preferred direction.  They never pass through a gear or the engine.
+        """
+        r = self.standoff_radius
+        anchors = [
+            (self.axle_centre, self.ring_tip_radius, 180.0),
+            (self.axle_centre, self.ring_tip_radius, -50.0),
+            (self.idler_centre, self.gear(self.idler_teeth).tip_radius, -20.0),
+            (self.input_centre, self.crown_radius, 0.0),
+        ]
+        sweep = [0, 15, -15, 30, -30, 45, -45, 60, -60, 75, -75, 90, -90]
+        centres: List[Point] = []
+        for centre, radius, preferred in anchors:
+            reach = radius + r + 2.5
+            for offset in sweep:
+                angle = math.radians(preferred + offset)
+                point = (
+                    centre[0] + reach * math.cos(angle),
+                    centre[1] + reach * math.sin(angle),
+                )
+                if self._standoff_clear(point) and all(
+                    distance(point, c) > 4 * r for c in centres
+                ):
+                    centres.append(point)
+                    break
+            else:
+                raise ValueError(f"no clear standoff position near {centre}")
+        return centres
+
+    def engine_mount_centres(self) -> List[Point]:
+        """World (x, z) of the engine mounts (one each side of the block)."""
+        frame = self.engine_frame()
+        return [
+            (frame.to_world((0.0, y, z))[0], frame.to_world((0.0, y, z))[2])
+            for y, z in self.engine.side_mount_positions()
+        ]
 
     # ------------------------------------------------------------ axial stack
     @property
@@ -248,22 +402,44 @@ class DrivetrainLayout:
         return self.differential.sun_b.shifted(self.carrier_offset)
 
     @property
+    def crank_y(self) -> float:
+        """Engine centreline: a mount gap inside the left plate."""
+        return (
+            self.plate_left.end + self.engine_mount_gap + self.engine.block_half_width
+        )
+
+    @property
+    def engine_block_span(self) -> Span:
+        hw = self.engine.block_half_width
+        return Span(self.crank_y - hw, self.crank_y + hw)
+
+    @property
+    def crown_span(self) -> Span:
+        """Crown gear body + teeth; its pitch plane is one pinion pitch radius
+        to the left of the crank axis, teeth facing +y."""
+        crown = self.crown
+        pitch_plane = self.crank_y - crown.pinion_pitch_radius
+        start = pitch_plane - crown.dedendum - self.crown_body_thickness
+        return Span(start, pitch_plane + crown.addendum)
+
+    @property
     def stage_plane(self) -> Span:
-        start = self.drum.end + 1.5
+        """Plane of the input pinion and idler (must overlap the ring)."""
+        start = self.crown_span.end + 1.5
         return Span(start, start + self.stage_gear_width)
 
     @property
     def plate_right(self) -> Span:
-        start = self.stage_plane.end + 1.0
+        start = max(
+            self.engine_block_span.end + self.engine_mount_gap,
+            self.drum.end + 1.0,
+            self.stage_plane.end + 1.0,
+        )
         return Span(start, start + self.plate_thickness)
 
     @property
     def plate_gap(self) -> Span:
         return Span(self.plate_left.end, self.plate_right.start)
-
-    @property
-    def idler_pinion_span(self) -> Span:
-        return Span(self.drum.start, self.stage_plane.start)
 
     @property
     def carrier_left_hub(self) -> Span:
@@ -274,41 +450,36 @@ class DrivetrainLayout:
         return Span(self.drum.end, self.plate_right.end)
 
     @property
-    def idler_shaft(self) -> Span:
+    def through_shaft(self) -> Span:
+        """Input and idler shafts run plate face to plate face."""
         return Span(self.plate_left.start, self.plate_right.end)
 
+    def engine_mount_spans(self) -> List[Span]:
+        block = self.engine_block_span
+        return [
+            Span(self.plate_left.end, block.start),
+            Span(block.end, self.plate_right.start),
+        ]
+
     # ----------------------------------------------------------------- engine
-    @property
-    def engine_origin_y(self) -> float:
-        """World y of the engine-local origin (flange face on the plate)."""
-        return self.plate_right.end
+    def engine_frame(self) -> EngineFrame:
+        return EngineFrame((self.engine_front, self.crank_y, self.crank_height))
 
     @property
-    def engine_block(self) -> Span:
-        return Span(0.0, self.engine.block_length).shifted(self.engine_origin_y)
-
-    def cylinder_y(self, index: int) -> float:
-        return self.engine_origin_y + self.engine.cylinder_y(index)
-
-    @property
-    def crank_stub(self) -> Span:
-        seat_floor = self.plate_left.end - self.crank_support_bearing.spec.width
-        return Span(seat_floor, self.engine_origin_y + self.engine.output_journal_end)
+    def crank_stub_local(self) -> Span:
+        """Output stub in engine-local y: from the pinion's front end to the
+        first throw (negative y is ahead of the block)."""
+        ahead = self.crank_pinion_span.end - self.engine_front
+        return Span(-ahead, self.engine.output_journal_end)
 
     @property
-    def flywheel(self) -> Span:
-        start = self.engine_block.end + 2.0
+    def flywheel_local(self) -> Span:
+        start = self.engine.block_length + 2.0
         return Span(start, start + self.flywheel_thickness)
 
     @property
-    def flywheel_stub(self) -> Span:
-        return Span(
-            self.engine_origin_y + self.engine.flywheel_journal_start,
-            self.flywheel.end,
-        )
-
-    def centre_journals(self) -> List[Span]:
-        return [j.shifted(self.engine_origin_y) for j in self.engine.centre_journals()]
+    def flywheel_stub_local(self) -> Span:
+        return Span(self.engine.flywheel_journal_start, self.flywheel_local.end)
 
     # --------------------------------------------------------- wheels / axles
     @property
@@ -317,7 +488,16 @@ class DrivetrainLayout:
 
     @property
     def right_wheel(self) -> Span:
-        inner = self.flywheel.end + self.wheel_clearance
+        by_track = (
+            self.vehicle_centreline + self.min_track_width / 2 - self.wheel_width / 2
+        )
+        by_parts = (
+            self.carrier_right_hub.end
+            + 1.0
+            + self.pillow_block_thickness
+            + self.wheel_clearance
+        )
+        inner = max(by_track, by_parts)
         return Span(inner, inner + self.wheel_width)
 
     @property
@@ -388,25 +568,32 @@ class DrivetrainLayout:
 
     # ------------------------------------------------------------ gear phases
     def gear_phases(self, crank_angle: float) -> Dict[str, float]:
-        """Rotation (degrees) of every gear for a given crank angle."""
+        """Rotation (degrees) of every gear for a given crank angle.
+
+        ``crank`` angles are in the YZ plane (from +Y toward +Z); the others
+        are in the XZ plane (from +X toward +Z).
+        """
         pitch = 360.0 / self.crank_pinion_teeth
-        idler = mesh_phase(
-            self.crank_centre,
-            crank_angle % pitch,
-            self.crank_pinion_teeth,
-            self.idler_centre,
-            self.idler_gear_teeth,
+        crown = crown_mesh_phase(
+            crank_angle % pitch, self.crank_pinion_teeth, self.crown_teeth
         )
-        # The compound idler is one part: its pinion shares the rotation.
+        idler = mesh_phase(
+            self.input_centre,
+            crown,
+            self.input_pinion_teeth,
+            self.idler_centre,
+            self.idler_teeth,
+        )
         carrier = mesh_phase(
             self.idler_centre,
             idler,
-            self.idler_pinion_teeth,
+            self.idler_teeth,
             self.axle_centre,
             self.differential.ring_teeth,
         )
         return {
-            "crank_pinion": crank_angle,
+            "crank": crank_angle,
+            "crown": crown,
             "idler": idler,
             "carrier": carrier,
             "sun_a": 0.0,
@@ -446,7 +633,6 @@ class DrivetrainLayout:
         def local(point: Point) -> Point:
             return (point[0], -point[1]) if side is PlateSide.RIGHT else point
 
-        journal = self.engine.crank_journal_diameter
         seats = [
             PlateSeat(
                 local(self.axle_centre),
@@ -458,66 +644,103 @@ class DrivetrainLayout:
                 self.idler_bearing.spec,
                 self.idler_shaft_diameter / 2.0 + 0.5,
             ),
+            PlateSeat(
+                local(self.input_centre),
+                self.input_bearing.spec,
+                self.input_shaft_diameter / 2.0 + 0.5,
+            ),
         ]
         holes = [
             PlateHole(local(s), M3_CLEARANCE_RADIUS_MM) for s in self.standoff_centres()
         ]
-        if side is PlateSide.LEFT:
-            seats.append(
-                PlateSeat(
-                    local(self.crank_centre),
-                    self.crank_support_bearing.spec,
-                    journal / 2.0 + 0.5,
-                )
-            )
-        else:
-            holes.append(
-                PlateHole(
-                    local(self.crank_centre), journal / 2.0 + 1.0, boss_margin=10.0
-                )
-            )
-            holes += [
-                PlateHole(local(b), M3_CLEARANCE_RADIUS_MM)
-                for b in self.engine_flange_bolts()
-            ]
+        holes += [
+            PlateHole(local(m), M3_CLEARANCE_RADIUS_MM, boss_margin=6.0)
+            for m in self.engine_mount_centres()
+        ]
         return seats, holes
 
     # ------------------------------------------------------------- validation
     def problems(self) -> List[str]:
         """Human-readable violations; empty when the layout is sound."""
         issues = list(self.engine.problems()) + list(self.differential.problems())
-        idler = self.gear(self.idler_gear_teeth)
-        pinion = self.gear(self.crank_pinion_teeth)
-        idler_pinion = self.gear(self.idler_pinion_teeth)
-        ring_tip = self.differential.ring_tip_radius
-        journal = self.engine.crank_journal_diameter
+        issues += self.crown.problems()
+        try:
+            self.idler_centre
+        except ValueError as error:
+            return issues + [str(error)]
+        issues += self._gear_train_problems()
+        issues += self._packaging_problems()
+        issues += self._axle_problems()
+        issues.extend(self._axle_stock_problems())
+        return issues
 
+    def _gear_train_problems(self) -> List[str]:
+        issues: List[str] = []
+        journal = self.engine.crank_journal_diameter
+        pinion = self.gear(self.crank_pinion_teeth)
         if pinion.root_radius < journal / 2.0 + 1.5:
             issues.append("crank pinion too small for the crank journal")
-        if idler_pinion.root_radius < self.idler_shaft_diameter / 2.0 + 1.5:
-            issues.append("idler pinion too small for its shaft")
-        hub = self.differential.hub_diameter / 2
-        if self.idler_centre[0] - idler.tip_radius - hub < 1.0:
-            issues.append("idler gear hits differential carrier hub")
-        if (
-            self.crank_centre[0]
-            - self.idler_centre[0]
-            - idler_pinion.tip_radius
-            - journal / 2
-            < 1.0
+        input_pinion = self.gear(self.input_pinion_teeth)
+        if input_pinion.root_radius < self.input_shaft_diameter / 2.0 + 1.5:
+            issues.append("input pinion too small for its shaft")
+        if distance(self.input_centre, self.axle_centre) < (
+            self.ring_tip_radius + self.crown_radius + 1.0
         ):
-            issues.append("idler pinion hits crank stub")
-        if self.crank_centre[0] - ring_tip - journal / 2 < 1.0:
-            issues.append("ring gear hits crank stub")
-        for s in self.standoff_centres():
-            for centre, radius in self.rotating_envelopes():
+            issues.append("crown gear hits the differential ring gear")
+        if (
+            self.stage_plane.end > self.drum.end
+            or self.stage_plane.start < self.drum.start
+        ):
+            issues.append("idler plane does not overlap the ring gear")
+        idler = self.gear(self.idler_teeth).tip_radius
+        if _box_distance(self.idler_centre, self.crank_pinion_box) < idler + 1.0:
+            issues.append("idler gear hits the crank pinion")
+        tip = input_pinion.tip_radius
+        if self.input_centre[0] - tip - self.crank_pinion_span.end < 1.0:
+            issues.append("input pinion hits the crank pinion")
+        if self.crank_pinion_span.start < self.engine_front + 0.5:
+            issues.append("crank pinion overlaps the engine block")
+        return issues
+
+    def _packaging_problems(self) -> List[str]:
+        issues: List[str] = []
+        block = self.engine_block_box
+        for name, centre, radius in self.rotating_envelopes():
+            if name == "crown":
+                gap = self.engine_front - (centre[0] - radius)
+                if gap > -1.0:
+                    issues.append("crown gear hits the engine block")
+                continue
+            if _box_distance(centre, block) < radius + 1.0:
+                issues.append(f"{name} gear hits the engine block")
+        try:
+            standoffs = self.standoff_centres()
+        except ValueError as error:
+            return issues + [str(error)]
+        for s in standoffs:
+            for name, centre, radius in self.rotating_envelopes():
                 if distance(s, centre) < radius + self.standoff_radius + 1.0:
-                    issues.append(f"standoff at {s} intersects gear at {centre}")
-        if self.axle_height - self.engine.block_half_width < 5.0:
-            issues.append("engine block too close to ground")
+                    issues.append(f"standoff at {s} intersects the {name}")
+            if _box_distance(s, block) < self.standoff_radius + 1.0:
+                issues.append(f"standoff at {s} intersects the engine")
+            if _box_distance(s, self.crank_pinion_box) < self.standoff_radius + 1.0:
+                issues.append(f"standoff at {s} intersects the crank pinion")
+            if s[1] - self.standoff_radius - 4.5 < 3.0:
+                issues.append(f"standoff at {s} drags the plates on the ground")
+        for span in self.engine_mount_spans():
+            if span.length < 1.0:
+                issues.append("no room for engine mounts between block and plates")
+        if self.crown_span.start < self.plate_left.end + 1.0:
+            issues.append("crown gear hits the left gearbox plate")
         if self.axle_height - self.flywheel_diameter / 2.0 < 5.0:
             issues.append("flywheel too close to ground")
-        if self.axle_height - ring_tip < 5.0:
+        if self.crank_height - self.flywheel_diameter / 2.0 < self.axle_height:
+            issues.append("flywheel sits below the axle line")
+        return issues
+
+    def _axle_problems(self) -> List[str]:
+        issues: List[str] = []
+        if self.axle_height - self.ring_tip_radius < 5.0:
             issues.append("ring gear too close to ground")
         if self.right_half_shaft.start - self.left_half_shaft.end < 1.0:
             issues.append("half-shaft ends collide inside the differential")
@@ -533,7 +756,6 @@ class DrivetrainLayout:
             issues.append("axle bearing bore smaller than the axle")
         if self.axle_bearing.spec.bore - self.axle_diameter > 0.3:
             issues.append("axle bearing bore much larger than the axle")
-        issues.extend(self._axle_stock_problems())
         return issues
 
     def _axle_stock_problems(self) -> List[str]:

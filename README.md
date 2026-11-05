@@ -38,21 +38,28 @@ box.export_stl("box.stl")
 ## Drivetrain, engine, wheels and axles
 
 `efficio.examples.drivetrain.rear_transaxle()` lays out and models every
-fabricated part of a small-vehicle rear transaxle. All shafts are parallel, so
-the whole power path uses spur gears:
+fabricated part of a small-vehicle rear transaxle. The **inline-4 engine** runs
+fore-and-aft **above the gearbox** and extends backward, so adding cylinders
+makes the car longer, not wider:
 
 ```
-twin-cylinder engine crank -> 12T pinion -> 36T|12T compound idler
-  -> 46T ring gear on spur differential -> 12T suns -> D-flat half-shafts
-  -> 12 mm hex adapters -> 110 mm wheels            (overall 11.5 : 1)
+inline-4 crank (along the car) -> 12T crank pinion -> 48T crown gear   (90 deg turn, 4:1)
+  input shaft 16T pinion -> 24T idler gear -> 46T ring on spur differential (2.875:1)
+  -> 12T suns -> half-shafts -> 12 mm hex adapters -> 110 mm wheels   (overall 11.5:1)
 ```
+
+The crown gear is a face gear. At every radius its teeth are the rack that
+meshes with the involute pinion (constant base pitch), and the face width is
+limited to where the teeth are neither radial nor pointed. The crank is a flat-plane
+0/180/180/0 inline-4 layout. The block sits between the gearbox side plates on
+**engine mounts**: spacers and M3 bolts into the block's side walls.
 
 | Group | Parts | Process |
 | --- | --- | --- |
-| Engine | split block (upper / lower), cylinder head, pistons, connecting rods, crank webs, flywheel, journals, crankpins, wrist pins | block and pistons FDM; head, rods, webs and flywheel 2.5D CNC plate or FDM; pins and journals rod stock |
-| Gearbox | left / right side plates with bearing seats, standoffs, crank pinion, compound idler, idler shaft | plates CNC plate or FDM; gears FDM (pinion also CNC) |
+| Engine | split block (upper / lower), cylinder head, pistons, connecting rods, crank webs, flywheel, journals, crankpins, wrist pins, engine mounts | block and pistons FDM; head, rods, webs and flywheel 2.5D CNC plate or FDM; pins and journals rod stock |
+| Gearbox | side plates with bearing seats, standoffs, crank pinion, crown gear, input pinion, idler gear, input and idler shafts | plates CNC plate or FDM; crown FDM; spur gears FDM or CNC |
 | Differential | two carrier halves carrying the ring teeth, two sun gears, four long planets on M3 bolt pins | FDM (planets also CNC) |
-| Axles and wheels | half-shafts, pillow blocks, hex wheel adapters, spoked rims, TPU tyres | half-shafts rod stock; rest FDM |
+| Axles and wheels | half-shafts, pillow blocks, hex wheel adapters, spoked rims, TPU tyres | half-shafts rod stock or dowel; rest FDM |
 
 Gears are involute (module 1.5, 25° pressure angle, so 12-tooth pinions do not
 undercut) with per-tooth backlash for printed parts.
@@ -64,7 +71,7 @@ its own dimensions, so it can be reused outside this build:
 
 | Module | Contents |
 | --- | --- |
-| `gears` | `InvoluteGearGeometry` (pure), `SpurGear` (optional hub, round or D bore), `CompoundSpurGear` |
+| `gears` | `InvoluteGearGeometry` and `FaceGearGeometry` (pure), `SpurGear` (optional hub, round or D bore, cross-pin drive), `CompoundSpurGear`, `CrownGear` |
 | `engine` | `EngineGeometry` (pure: any cylinder count, bore or stroke, derived bolt patterns, kinematics, rod-sweep check), `EngineBlockHalf`, `CylinderHead`, `CrankWeb`, `ConnectingRod`, `Piston`, `Flywheel` |
 | `gearbox` | `BearingPlate`, built from any list of `PlateSeat` / `PlateHole` |
 | `differential` | `SpurDifferentialGeometry` (pure), `SpurDifferentialCarrierHalf`, and `sun_gear` / `planet_gear` / `ring_gear`, which are `SpurGear`s |
@@ -83,8 +90,8 @@ and the pillow blocks take inch-series R4 bearings. `powertrain.dowels` lists
 the Waddell sizes from 1/8" to 1".
 
 Engine parts have `from_engine(EngineGeometry)` factories. Change the layout
-(for example `DrivetrainLayout(engine=EngineGeometry(cylinders=3))`) and every
-dependent part, plate hole and shaft length follows. The assembled solids are
+(for example `DrivetrainLayout(engine=EngineGeometry(cylinders=6))`) and every
+dependent part, plate hole and shaft length follows, while the track stays the same. The assembled solids are
 checked pair by pair for interference, and the engine is checked across a crank
 sweep.
 

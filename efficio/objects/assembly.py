@@ -180,6 +180,48 @@ class Assembly(EfficioObject):
         self.instances.append(placed)
         return placed
 
+    def place_along_x(
+        self,
+        spec: PartSpec,
+        label: str,
+        y: float,
+        z: float,
+        x_from: float,
+        toward_positive_x: bool,
+        spin: float = 0.0,
+    ) -> PlacedPart:
+        """Place a part whose axis is local +Z onto a world-X axis.
+
+        ``spin`` is the world angle in the YZ plane (from +Y toward +Z) of the
+        part's local +X direction.
+        """
+        origin = cq.Vector(0, 0, 0)
+        solid = self.register(spec).solid()
+        if toward_positive_x:
+            solid = solid.rotate(origin, cq.Vector(0, 0, 1), spin + 90.0)
+            solid = solid.rotate(origin, cq.Vector(0, 1, 0), 90)
+        else:
+            solid = solid.rotate(origin, cq.Vector(0, 0, 1), 90.0 - spin)
+            solid = solid.rotate(origin, cq.Vector(0, 1, 0), -90)
+        solid = solid.translate(cq.Vector(x_from, y, z))
+        placed = PlacedPart(label, spec.name, solid, self, spec)
+        self.instances.append(placed)
+        return placed
+
+    def relocate(
+        self, rotate_z: float, translation: Tuple[float, float, float]
+    ) -> "Assembly":
+        """Move a sub-assembly built in its own local frame into place:
+        rotate about +Z through the origin, then translate."""
+        origin = cq.Vector(0, 0, 0)
+        offset = cq.Vector(*translation)
+        for placed in self.all_instances():
+            solid = placed.solid
+            if rotate_z:
+                solid = solid.rotate(origin, cq.Vector(0, 0, 1), rotate_z)
+            placed.solid = solid.translate(offset)
+        return self
+
     def place_radial(
         self,
         spec: PartSpec,
