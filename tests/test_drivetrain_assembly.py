@@ -3,7 +3,8 @@ import os
 import tempfile
 import unittest
 
-from efficio.examples.drivetrain import engine_assembly, rear_transaxle
+from efficio.__main__ import fetch_object_data
+from efficio.examples.drivetrain import RearTransaxle, engine_assembly, rear_transaxle
 from efficio.measures import Millimeter
 from efficio.objects.assembly import Assembly, PartSpec
 from efficio.objects.drivetrain import SpurGear
@@ -112,3 +113,21 @@ class TestInterferenceDetection(unittest.TestCase):
         collisions = self._pair(5.0).interferences()
         self.assertEqual(len(collisions), 1)
         self.assertGreater(collisions[0][2], 1.0)
+
+
+class TestRearTransaxleObject(unittest.TestCase):
+    def test_cli_discovers_composite_object(self) -> None:
+        options = {cls.__name__: params for cls, params in fetch_object_data().items()}
+        self.assertIn("RearTransaxle", options)
+        self.assertEqual(options["RearTransaxle"]["crank_angle"][0], "float")
+
+    def test_composite_shape_spans_the_build(self) -> None:
+        shape = RearTransaxle(crank_angle=0.0).shape()
+        assert shape is not None
+        bounds = shape.bounds()
+        assert bounds is not None
+        layout = DrivetrainLayout()
+        self.assertAlmostEqual(bounds[2], 0.0, delta=0.3)
+        self.assertAlmostEqual(bounds[1], layout.left_wheel.start, delta=0.5)
+        self.assertAlmostEqual(bounds[4], layout.right_wheel.end, delta=0.5)
+        self.assertGreater(bounds[5], layout.crank_centre[1] + layout.deck_height)

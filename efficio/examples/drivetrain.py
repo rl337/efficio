@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 
 from efficio.measures import Millimeter
 from efficio.objects.assembly import Assembly, PartSpec
+from efficio.objects.base import EfficioObject
 from efficio.objects.drivetrain import (
     CompoundSpurGear,
     DifferentialCarrierHalf,
@@ -29,6 +30,7 @@ from efficio.objects.engine import (
 )
 from efficio.objects.fits import Process
 from efficio.objects.gears import MetricModule, PressureAngle
+from efficio.objects.shapes import Shape
 from efficio.objects.wheels import HexWheelAdapter, PillowBlock, Rim, Tire
 
 PRINT = Process.FDM_PRINT
@@ -570,6 +572,25 @@ def rear_transaxle(
     add_gearbox(assembly, layout, crank_angle)
     add_axles_and_wheels(assembly, layout, crank_angle)
     return assembly
+
+
+class RearTransaxle(EfficioObject):
+    """Every drivetrain part placed in its assembled position, as one object.
+
+    Exposed to the command line, e.g.::
+
+        python -m efficio --object RearTransaxle \\
+            --params crank_angle=0 --png rear_transaxle.png
+    """
+
+    def __init__(self, crank_angle: float):
+        self.crank_angle = crank_angle
+
+    def assembly(self) -> Assembly:
+        return rear_transaxle(crank_angle=self.crank_angle)
+
+    def shape(self) -> Optional[Shape]:
+        return self.assembly().shape()
 
 
 def export_kit(directory: str, crank_angle: float = 0.0) -> List[str]:
