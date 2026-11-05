@@ -149,10 +149,10 @@ class TestDrivetrainLayout(unittest.TestCase):
     def test_shaft_centres_come_from_pitch_radii(self) -> None:
         layout = self.layout
         self.assertAlmostEqual(
-            distance(layout.idler_centre, layout.axle_centre), 1.5 * (24 + 46) / 2
+            distance(layout.idler_centre, layout.axle_centre), 1.5 * (42 + 46) / 2
         )
         self.assertAlmostEqual(
-            distance(layout.idler_centre, layout.input_centre), 1.5 * (16 + 24) / 2
+            distance(layout.idler_centre, layout.input_centre), 1.5 * (16 + 42) / 2
         )
         self.assertAlmostEqual(layout.axle_centre[1], 55.0)
         self.assertAlmostEqual(layout.input_centre[1], layout.crank_height)
@@ -278,6 +278,10 @@ class TestDrivetrainLayout(unittest.TestCase):
         )
         self.assertTrue(DrivetrainLayout(crown_teeth=36).problems())
         self.assertTrue(DrivetrainLayout(engine_mount_gap=0.5).problems())
+        self.assertIn(
+            "idler shaft passes through the crown gear",
+            DrivetrainLayout(idler_teeth=24).problems(),
+        )
 
 
 class TestDowels(unittest.TestCase):

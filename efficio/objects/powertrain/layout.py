@@ -10,7 +10,8 @@ Power path:
 * **Right-angle drive:** the crank pinion (spur, axis ``x``) meshes the
   **crown gear** on the gearbox input shaft (axis ``y``).
 * **Gearbox:** the input shaft's spur pinion drives an **idler gear**, which
-  drives the **ring gear** on the differential carrier.  The shafts are
+  drives the **ring gear** on the differential carrier.  The idler is large
+  enough that its shaft passes outside the crown gear.  The shafts are
   stacked so the engine block clears the ring and idler below it.
 * **Differential** -> **half-shafts** -> **wheels**.
 
@@ -104,8 +105,9 @@ class DrivetrainLayout:
     crown_teeth: int = 48
     crown_addendum: float = 0.8
     crown_body_thickness: float = 5.0
+    crown_backlash: float = 0.3
     input_pinion_teeth: int = 16
-    idler_teeth: int = 24
+    idler_teeth: int = 42
     stage_gear_width: float = 10.0
     input_shaft_diameter: float = 5.0
     idler_shaft_diameter: float = 5.0
@@ -196,7 +198,7 @@ class DrivetrainLayout:
             teeth=self.crown_teeth,
             pinion_teeth=self.crank_pinion_teeth,
             pressure_angle_degrees=self.pressure_angle,
-            backlash=self.backlash,
+            backlash=self.crown_backlash,
             addendum_coefficient=self.crown_addendum,
         )
 
@@ -687,6 +689,9 @@ class DrivetrainLayout:
             self.ring_tip_radius + self.crown_radius + 1.0
         ):
             issues.append("crown gear hits the differential ring gear")
+        idler_reach = distance(self.idler_centre, self.input_centre)
+        if idler_reach < self.crown_radius + self.idler_shaft_diameter / 2 + 1.0:
+            issues.append("idler shaft passes through the crown gear")
         if (
             self.stage_plane.end > self.drum.end
             or self.stage_plane.start < self.drum.start

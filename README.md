@@ -44,7 +44,7 @@ makes the car longer, not wider:
 
 ```
 inline-4 crank (along the car) -> 12T crank pinion -> 48T crown gear   (90 deg turn, 4:1)
-  input shaft 16T pinion -> 24T idler gear -> 46T ring on spur differential (2.875:1)
+  input shaft 16T pinion -> 42T idler gear -> 46T ring on spur differential (2.875:1)
   -> 12T suns -> half-shafts -> 12 mm hex adapters -> 110 mm wheels   (overall 11.5:1)
 ```
 

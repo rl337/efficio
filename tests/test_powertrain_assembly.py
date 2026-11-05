@@ -242,7 +242,8 @@ class TestSubassemblies(unittest.TestCase):
         gearbox = self.assembly.find("Gearbox")
         labels = {p.label for p in gearbox.all_instances()}
         self.assertIn("crank_pinion", labels)
-        self.assertIn("idler_compound_gear", labels)
+        self.assertIn("idler_gear", labels)
+        self.assertIn("crown_gear", labels)
         self.assertIn("gearbox_plate_left", labels)
         self.assertNotIn("diff_sun_left", labels)
         self.assertEqual(gearbox.path(), "Rear transaxle / Gearbox")

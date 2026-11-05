@@ -358,7 +358,7 @@ def add_gearbox(
             Millimeter(layout.input_shaft_diameter),
             True,
             pressure,
-            backlash,
+            Millimeter(layout.crown_backlash),
             layout.crown_addendum,
         ),
         (PRINT,),
