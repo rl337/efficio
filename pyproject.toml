@@ -53,6 +53,13 @@ force_grid_wrap = 0
 use_parentheses = true
 ensure_newline_before_comments = true
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    # Raised by SWIG bindings inside OCP/CadQuery on import; not ours to fix.
+    "ignore:builtin type (SwigPyPacked|SwigPyObject|swigvarlink) has no __module__ attribute:DeprecationWarning",
+]
+
 [tool.mypy]
 strict = true
 disallow_untyped_calls = true

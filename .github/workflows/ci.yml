@@ -6,12 +6,28 @@ on:
   pull_request:
     branches: [main]
 
+# A new push to the same PR cancels the run it supersedes.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Build Docker image
         run: docker build -t efficio .
       - name: Run checks
         run: docker run -v ${{ github.workspace }}:/app efficio /app/run_checks.sh
+      - name: Summarise test results
+        if: always()
+        run: python3 .github/scripts/junit_summary.py test-results/junit.xml >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/junit.xml
+          if-no-files-found: warn
