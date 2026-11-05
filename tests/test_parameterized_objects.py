@@ -4,6 +4,8 @@ skill: each is built with the standard values and a non-default set."""
 import unittest
 from typing import Tuple
 
+import cadquery as cq
+
 from efficio.measures import Millimeter
 from efficio.objects import EfficioObject
 from efficio.objects.enclosures import Button, RoundedBox
@@ -31,6 +33,12 @@ def _bounds(obj: EfficioObject) -> Bounds:
     assert bounds is not None
     result: Bounds = bounds
     return result
+
+
+def _volume(obj: EfficioObject) -> float:
+    shape = obj.shape()
+    assert shape is not None
+    return sum(v.Volume() for v in shape.workplane().vals() if isinstance(v, cq.Shape))
 
 
 def _size(bounds: Bounds) -> Tuple[float, float, float]:
@@ -119,11 +127,11 @@ class TestVessels(unittest.TestCase):
 
 class TestParameterizedParts(unittest.TestCase):
     def test_spherical_gear_tooth_height_is_a_parameter(self) -> None:
-        low = _size(_bounds(SphericalGear(Millimeter(20), 12)))[0]
-        high = _size(
-            _bounds(SphericalGear(Millimeter(20), 12, tooth_height_ratio=0.2))
-        )[0]
-        self.assertGreater(high, low)
+        # The tip radius is a hard envelope, so deeper teeth remove material.
+        shallow = SphericalGear(Millimeter(20), 12)
+        deep = SphericalGear(Millimeter(20), 12, tooth_height_ratio=0.2)
+        self.assertAlmostEqual(_size(_bounds(deep))[0], 40.0, delta=0.1)
+        self.assertLess(_volume(deep), _volume(shallow))
 
     def test_pillow_block_with_other_fastener_and_wall(self) -> None:
         default = PillowBlock(
