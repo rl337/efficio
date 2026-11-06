@@ -1,6 +1,8 @@
 import unittest
 
-from efficio import renderer
+import cadquery as cq
+
+from efficio import preview, renderer
 from efficio.__main__ import get_constructor_defaults, parse_color
 from efficio.measures import Millimeter
 from efficio.objects.fasteners import M3Bolt
@@ -77,6 +79,72 @@ class TestColorPreview(unittest.TestCase):
             if r > 100 and g < 60 and b < 60:
                 reds += count
         self.assertGreater(reds, 1000)
+
+    def test_crossing_triangles_resolve_depth_per_pixel(self) -> None:
+        red = ((-1.0, -1.0, -1.0), (1.0, -1.0, 1.0), (0.0, 1.0, 0.0))
+        blue = ((-1.0, -1.0, 1.0), (1.0, -1.0, -1.0), (0.0, 1.0, 0.0))
+        triangles = [(red, (240, 0, 0)), (blue, (0, 0, 240))]
+        style = renderer.PreviewStyle(panel_width=120, panel_height=120, margin=10)
+        first = renderer.create_color_view(
+            triangles, preview.TOP, style=style, show_grid=False
+        )
+        second = renderer.create_color_view(
+            list(reversed(triangles)), preview.TOP, style=style, show_grid=False
+        )
+        self.assertEqual(first.tobytes(), second.tobytes())
+        self.assertEqual(
+            first.getpixel((35, 80)),
+            preview.shade((0, 0, 240), preview.triangle_normal(blue), preview.TOP),
+        )
+        self.assertEqual(
+            first.getpixel((85, 80)),
+            preview.shade((240, 0, 0), preview.triangle_normal(red), preview.TOP),
+        )
+
+    def test_flat_tessellated_surface_has_no_cracks_in_either_winding(self) -> None:
+        a, b, c, d = (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0)
+        style = renderer.PreviewStyle(panel_width=120, panel_height=120, margin=10)
+        for triangles in (((a, b, c), (a, c, d)), ((c, b, a), (d, c, a))):
+            with self.subTest(triangles=triangles):
+                image = renderer.create_color_view(
+                    [(triangle, (200, 100, 20)) for triangle in triangles],
+                    preview.TOP,
+                    style=style,
+                    show_grid=False,
+                )
+                expected = preview.shade((200, 100, 20), (0, 0, 1), preview.TOP)
+                self.assertEqual(
+                    image.crop((10, 10, 110, 110)).getcolors(), [(10000, expected)]
+                )
+                self.assertEqual(image.getpixel((0, 0)), (255, 255, 255))
+
+    def test_real_cad_nearer_box_hides_back_box(self) -> None:
+        back = cq.Workplane("XY").box(10, 10, 1).val()
+        front = cq.Workplane("XY").box(10, 10, 1).translate((0, 0, 3)).val()
+        assert isinstance(back, cq.Shape) and isinstance(front, cq.Shape)
+        triangles = renderer.tessellate_parts(
+            [("front", front, (0, 200, 0)), ("back", back, (200, 0, 0))]
+        )
+        style = renderer.PreviewStyle(panel_width=120, panel_height=120, margin=10)
+        image = renderer.create_color_view(triangles, preview.TOP, style=style)
+        expected = preview.shade((0, 200, 0), (0, 0, 1), preview.TOP)
+        self.assertEqual(
+            image.crop((10, 10, 110, 110)).getcolors(), [(10000, expected)]
+        )
+
+    def test_grid_remains_background_and_degenerate_triangles_are_skipped(self) -> None:
+        triangle = ((-1.0, -1.0, 0.0), (1.0, -1.0, 0.0), (0.0, 1.0, 0.0))
+        edge = ((-1.0, 0.0, 10.0), (1.0, 0.0, 10.0), (0.0, 0.0, 10.0))
+        style = renderer.PreviewStyle(panel_width=120, panel_height=120, margin=10)
+        image = renderer.create_color_view(
+            [(triangle, (200, 0, 0)), (edge, (0, 0, 200))],
+            preview.TOP,
+            style=style,
+        )
+        self.assertEqual(image.getpixel((15, 60)), (205, 205, 205))
+        self.assertEqual(
+            image.getpixel((60, 60)), preview.shade((200, 0, 0), (0, 0, 1), preview.TOP)
+        )
 
     def test_empty_preview_rejected(self) -> None:
         with self.assertRaises(ValueError):

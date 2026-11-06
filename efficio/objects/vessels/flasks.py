@@ -21,6 +21,10 @@ class TriangularFlaskVase(EfficioObject):
     ):
         if not 0.0 < body_fraction < 1.0:
             raise ValueError("body_fraction must be between 0 and 1")
+        if min(width.value(), height.value(), depth.value(), neck.value()) <= 0:
+            raise ValueError("Flask dimensions must be positive")
+        if neck.value() > width.value():
+            raise ValueError("Neck must not be wider than the body")
         self.width = width
         self.height = height
         self.depth = depth
@@ -40,7 +44,8 @@ class TriangularFlaskVase(EfficioObject):
                 [
                     (-width / 2, 0),
                     (width / 2, 0),
-                    (0, body_height),
+                    (neck / 2, body_height),
+                    (-neck / 2, body_height),
                 ]
             )
             .extrude(depth)

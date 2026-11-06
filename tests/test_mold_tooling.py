@@ -1,6 +1,9 @@
 import os
 import tempfile
 import unittest
+from typing import cast
+
+import cadquery as cq
 
 from efficio.examples.mold_tooling import (
     plaster_triangular_flask_tooling,
@@ -94,7 +97,7 @@ class TestMoldTooling(unittest.TestCase):
         # Tip envelope is ~50.8 mm; a root-only sphere would be ~45.7 mm.
         self.assertGreater(max(master_dims), 49.5)
 
-    def test_positive_silicone_embeds_master_in_envelope(self) -> None:
+    def test_positive_silicone_preserves_exact_master_profile(self) -> None:
         tooling = plaster_triangular_flask_tooling()
         self.assertIs(tooling.polarity, MoldPolarity.POSITIVE)
         self.assertIs(tooling.purpose, CottlePurpose.MOLD_SUPPORT)
@@ -119,9 +122,14 @@ class TestMoldTooling(unittest.TestCase):
             silicone_bounds[5] - silicone_bounds[2],
         )
 
-        pad = tooling.silicone_thickness.value()
-        for master_dim, silicone_dim in zip(master_dims, silicone_dims):
-            self.assertAlmostEqual(silicone_dim, master_dim + 2 * pad, delta=0.5)
+        self.assertEqual(silicone_bounds, master_bounds)
+        self.assertEqual(silicone_dims, master_dims)
+        self.assertEqual(len(silicone.workplane().solids().vals()), 1)
+        self.assertAlmostEqual(
+            cast(cq.Shape, silicone.workplane().val()).Volume(),
+            cast(cq.Shape, master.workplane().val()).Volume(),
+            delta=0.01,
+        )
 
         tooling.validate_for_printer()
         sections = tooling.cottle_sections()
