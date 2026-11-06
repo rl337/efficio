@@ -3,6 +3,8 @@ import os
 import tempfile
 import unittest
 
+import cadquery as cq
+
 from efficio import renderer
 from efficio.__main__ import fetch_object_data
 from efficio.__main__ import main as efficio_main
@@ -43,9 +45,12 @@ class TestDrivetrainAssembly(unittest.TestCase):
         quantities = self.assembly.quantities()
         self.assertEqual(quantities["diff_planet_gear"], 4)
         self.assertEqual(quantities["diff_sun_gear"], 2)
-        self.assertEqual(quantities["crank_web"], 4)
-        self.assertEqual(quantities["piston"], 2)
-        self.assertEqual(quantities["connecting_rod"], 2)
+        self.assertEqual(quantities["crank_web"], 8)
+        self.assertEqual(quantities["piston"], 4)
+        self.assertEqual(quantities["connecting_rod"], 4)
+        self.assertEqual(quantities["engine_mount_left"], 2)
+        self.assertEqual(quantities["crown_gear"], 1)
+        self.assertEqual(quantities["idler_gear"], 1)
         self.assertEqual(quantities["wheel_rim"], 2)
         self.assertEqual(quantities["wheel_tire"], 2)
         self.assertEqual(quantities["gearbox_standoff"], 4)
@@ -106,11 +111,7 @@ class TestEngineSweep(unittest.TestCase):
 
 class TestVariantDrivetrain(unittest.TestCase):
     def test_single_cylinder_transaxle_assembles_cleanly(self) -> None:
-        layout = DrivetrainLayout(
-            engine=EngineGeometry(cylinders=1),
-            crank_pinion_teeth=14,
-            idler_gear_teeth=34,
-        )
+        layout = DrivetrainLayout(engine=EngineGeometry(cylinders=1))
         assembly = rear_transaxle(layout, crank_angle=17.0)
         self.assertEqual(assembly.quantities()["piston"], 1)
         self.assertEqual(assembly.interferences(), [])
@@ -163,7 +164,7 @@ class TestRearTransaxleObject(unittest.TestCase):
         self.assertIn("SpurGear", options)
 
     def test_composite_shape_spans_the_build(self) -> None:
-        shape = RearTransaxle(crank_angle=0.0, cylinders=2).shape()
+        shape = RearTransaxle(crank_angle=0.0).shape()
         assert shape is not None
         bounds = shape.bounds()
         assert bounds is not None
@@ -171,9 +172,7 @@ class TestRearTransaxleObject(unittest.TestCase):
         self.assertAlmostEqual(bounds[2], 0.0, delta=0.3)
         self.assertAlmostEqual(bounds[1], layout.left_wheel.start, delta=0.5)
         self.assertAlmostEqual(bounds[4], layout.right_wheel.end, delta=0.5)
-        self.assertGreater(
-            bounds[5], layout.crank_centre[1] + layout.engine.deck_height
-        )
+        self.assertGreater(bounds[5], layout.crank_height + layout.engine.deck_height)
 
 
 class TestDowelAxleTransaxle(unittest.TestCase):
@@ -243,7 +242,8 @@ class TestSubassemblies(unittest.TestCase):
         gearbox = self.assembly.find("Gearbox")
         labels = {p.label for p in gearbox.all_instances()}
         self.assertIn("crank_pinion", labels)
-        self.assertIn("idler_compound_gear", labels)
+        self.assertIn("idler_gear", labels)
+        self.assertIn("crown_gear", labels)
         self.assertIn("gearbox_plate_left", labels)
         self.assertNotIn("diff_sun_left", labels)
         self.assertEqual(gearbox.path(), "Rear transaxle / Gearbox")
@@ -323,3 +323,32 @@ class TestPreviewColourInheritance(unittest.TestCase):
         Assembly("a").add_subassembly(child)
         with self.assertRaises(ValueError):
             Assembly("b").add_subassembly(child)
+
+
+class TestRightAngleDrive(unittest.TestCase):
+    def test_crown_and_pinion_mesh_as_the_crank_turns(self) -> None:
+        layout = DrivetrainLayout()
+        for angle in (0.0, 11.0, 23.0):
+            with self.subTest(crank_angle=angle):
+                gearbox = gearbox_assembly(layout, angle)
+                self.assertEqual(gearbox.interferences(), [])
+
+    def test_engine_and_gearbox_fit_together(self) -> None:
+        layout = DrivetrainLayout()
+        both = Assembly("engine + gearbox")
+        both.add_subassembly(engine_assembly(layout, 7.0))
+        both.add_subassembly(gearbox_assembly(layout, 7.0))
+        self.assertEqual(both.interferences(), [])
+
+    def test_mis_phased_crown_collides(self) -> None:
+        layout = DrivetrainLayout()
+        good = gearbox_assembly(layout, 0.0)
+        pinion = good.instance("crank_pinion")
+        crown = good.instance("crown_gear")
+        self.assertLess(pinion.solid.intersect(crown.solid).Volume(), 0.05)
+        half_pitch = 360.0 / layout.crown_teeth / 2
+        nx, nz = layout.input_centre
+        shifted = crown.solid.rotate(
+            cq.Vector(nx, 0, nz), cq.Vector(nx, 1, nz), half_pitch
+        )
+        self.assertGreater(pinion.solid.intersect(shifted).Volume(), 1.0)

@@ -30,7 +30,7 @@ from efficio.objects.powertrain.engine import (
 )
 from efficio.objects.powertrain.fits import Process
 from efficio.objects.powertrain.gearbox import BearingPlate
-from efficio.objects.powertrain.gears import CompoundSpurGear, SpurGear
+from efficio.objects.powertrain.gears import CrownGear, SpurGear
 from efficio.objects.powertrain.layout import AxleStock, DrivetrainLayout, PlateSide
 from efficio.objects.powertrain.planar import Span
 from efficio.objects.powertrain.shafts import Shaft, Standoff
@@ -81,9 +81,10 @@ def _pressure(layout: DrivetrainLayout) -> PressureAngle:
 def add_engine(
     assembly: Assembly, layout: DrivetrainLayout, crank_angle: float
 ) -> None:
+    """Build the engine in its local frame (crank on +Y from the front face,
+    cylinders on +Z); :func:`engine_assembly` moves it into place."""
     engine = layout.engine
-    cx, cz = layout.crank_centre
-    y0 = layout.engine_origin_y
+    cx, cz, y0 = 0.0, 0.0, 0.0
     pose = engine.pose(crank_angle)
     journal = engine.crank_journal_diameter
 
@@ -150,14 +151,14 @@ def add_engine(
     output_stub = rod_stock(
         "crank_output_stub",
         journal,
-        layout.crank_stub,
+        layout.crank_stub_local,
         True,
         "D-flat full length; drives crank pinion",
     )
     flywheel_stub = rod_stock(
         "crank_flywheel_stub",
         journal,
-        layout.flywheel_stub,
+        layout.flywheel_stub_local,
         True,
         "D-flat full length; carries flywheel",
     )
@@ -180,7 +181,7 @@ def add_engine(
         "crank_output_stub",
         cx,
         cz,
-        layout.crank_stub.start,
+        layout.crank_stub_local.start,
         True,
         crank_angle,
     )
@@ -189,12 +190,12 @@ def add_engine(
         "crank_flywheel_stub",
         cx,
         cz,
-        layout.flywheel_stub.start,
+        layout.flywheel_stub_local.start,
         True,
         crank_angle,
     )
-    place(flywheel, "flywheel", cx, cz, layout.flywheel.start, True, crank_angle)
-    for index, span in enumerate(layout.centre_journals()):
+    place(flywheel, "flywheel", cx, cz, layout.flywheel_local.start, True, crank_angle)
+    for index, span in enumerate(engine.centre_journals()):
         centre_journal = rod_stock(
             "crank_centre_journal",
             journal,
@@ -205,7 +206,7 @@ def add_engine(
         place(centre_journal, f"crank_centre_journal_{index}", cx, cz, span.start, True)
 
     for i in range(engine.cylinders):
-        y = layout.cylinder_y(i)
+        y = engine.cylinder_y(i)
         throw = pose.throw_angles[i]
         px, pz = pose.crankpin_centres[i]
         wrist_z = cz + pose.wrist_pin_heights[i]
@@ -238,6 +239,27 @@ def add_engine(
             True,
         )
 
+    # Engine mounts: spacers from each side wall out to the gearbox plates.
+    hw = engine.block_half_width
+    spans = layout.engine_mount_spans()
+    gaps = [spans[0].length, spans[1].length]
+    mounts: List[PartSpec] = []
+    for side, gap in zip(("left", "right"), gaps):
+        mounts.append(
+            PartSpec(
+                f"engine_mount_{side}",
+                Standoff(Millimeter(gap), Millimeter(8.0)),
+                (PRINT,),
+                "TPU 95A (absorbs vibration) or PETG",
+                f"{gap:g} mm spacer between the block and the {side} gearbox plate",
+            )
+        )
+    for index, (y, z) in enumerate(engine.side_mount_positions()):
+        assembly.place_along_x(
+            mounts[0], f"engine_mount_left_{index}", y, z, -hw - gaps[0], True
+        )
+        assembly.place_along_x(mounts[1], f"engine_mount_right_{index}", y, z, hw, True)
+
     assembly.add_hardware(
         f"{engine.main_bearing.designation} ball bearing",
         2,
@@ -251,10 +273,11 @@ def add_engine(
         len(engine.split_bolt_positions()),
         "Block split bolts",
     )
+    mount_bolt = layout.plate_thickness + max(gaps) + engine.side_mount_depth - 1
     assembly.add_hardware(
-        "M3 x 16 socket cap screw",
-        len(engine.flange_bolt_offsets()),
-        "Engine to right gearbox plate",
+        f"M3 x {mount_bolt:.0f} socket cap screw",
+        2 * len(engine.side_mount_positions()),
+        "Engine mounts: through the gearbox plate and spacer into the block",
     )
 
 
@@ -267,7 +290,7 @@ def add_gearbox(
     backlash = Millimeter(layout.backlash)
     phases = layout.gear_phases(crank_angle)
     ix, iz = layout.idler_centre
-    cx, cz = layout.crank_centre
+    nx, nz = layout.input_centre
     place = assembly.place_axial
 
     for side, span, toward_positive in (
@@ -296,88 +319,113 @@ def add_gearbox(
     for i, (sx, sz) in enumerate(layout.standoff_centres()):
         place(standoff, f"gearbox_standoff_{i}", sx, sz, gap.start, True)
 
+    # Right-angle drive: crank pinion (axis x) into the crown gear (axis y).
+    journal = layout.engine.crank_journal_diameter
+    pinion_span = layout.crank_pinion_span
     pinion = PartSpec(
         "crank_pinion",
         SpurGear(
             module,
             layout.crank_pinion_teeth,
-            Millimeter(layout.stage_gear_width),
-            Millimeter(layout.engine.crank_journal_diameter),
+            Millimeter(pinion_span.length),
+            Millimeter(journal),
             True,
             pressure,
             backlash=backlash,
         ),
         (PRINT, CNC),
         GEAR_MATERIAL,
-        f"{layout.crank_pinion_teeth}T m{layout.module:g} {layout.pressure_angle:g} deg",
+        f"{layout.crank_pinion_teeth}T m{layout.module:g} {layout.pressure_angle:g} deg; "
+        "on the crank nose, drives the crown gear",
     )
-    place(
+    assembly.place_along_x(
         pinion,
         "crank_pinion",
-        cx,
-        cz,
-        layout.stage_plane.start,
+        layout.crank_y,
+        layout.crank_height,
+        pinion_span.start,
         True,
-        phases["crank_pinion"],
+        phases["crank"],
     )
-
-    idler = PartSpec(
-        "idler_compound_gear",
-        CompoundSpurGear(
+    crown_span = layout.crown_span
+    crown = PartSpec(
+        "crown_gear",
+        CrownGear(
             module,
-            layout.idler_pinion_teeth,
-            Millimeter(layout.idler_pinion_span.length),
-            layout.idler_gear_teeth,
-            Millimeter(layout.stage_gear_width),
-            Millimeter(layout.idler_shaft_diameter),
+            layout.crown_teeth,
+            layout.crank_pinion_teeth,
+            Millimeter(layout.crown_body_thickness),
+            Millimeter(layout.input_shaft_diameter),
+            True,
             pressure,
-            backlash,
+            Millimeter(layout.crown_backlash),
+            layout.crown_addendum,
         ),
         (PRINT,),
-        "Nylon / PETG",
-        f"{layout.idler_pinion_teeth}T + {layout.idler_gear_teeth}T; print large gear down",
+        GEAR_MATERIAL,
+        f"{layout.crown_teeth}T face gear; turns the drive 90 deg "
+        f"({layout.crown_teeth / layout.crank_pinion_teeth:g}:1). Print teeth up",
     )
-    place(
-        idler,
-        "idler_compound_gear",
-        ix,
-        iz,
-        layout.idler_pinion_span.start,
+    place(crown, "crown_gear", nx, nz, crown_span.start, True, phases["crown"])
+
+    stage = layout.stage_plane
+    input_pinion = PartSpec(
+        "input_pinion",
+        SpurGear(
+            module,
+            layout.input_pinion_teeth,
+            Millimeter(stage.length),
+            Millimeter(layout.input_shaft_diameter),
+            True,
+            pressure,
+            backlash=backlash,
+        ),
+        (PRINT, CNC),
+        GEAR_MATERIAL,
+        f"{layout.input_pinion_teeth}T on the input shaft, drives the idler",
+    )
+    place(input_pinion, "input_pinion", nx, nz, stage.start, True, phases["crown"])
+    shaft_span = layout.through_shaft
+    input_shaft = rod_stock(
+        "input_shaft",
+        layout.input_shaft_diameter,
+        shaft_span,
         True,
-        phases["idler"],
+        "D-flat full length; carries crown gear and input pinion",
     )
+    place(input_shaft, "input_shaft", nx, nz, shaft_span.start, True, phases["crown"])
+
+    idler = PartSpec(
+        "idler_gear",
+        SpurGear(
+            module,
+            layout.idler_teeth,
+            Millimeter(stage.length),
+            Millimeter(layout.idler_shaft_diameter),
+            True,
+            pressure,
+            backlash=backlash,
+        ),
+        (PRINT, CNC),
+        GEAR_MATERIAL,
+        f"{layout.idler_teeth}T; drops the drive down to the ring gear",
+    )
+    place(idler, "idler_gear", ix, iz, stage.start, True, phases["idler"])
     idler_shaft = rod_stock(
         "idler_shaft",
         layout.idler_shaft_diameter,
-        layout.idler_shaft,
+        shaft_span,
         True,
         "D-flat full length",
     )
-    place(
-        idler_shaft,
-        "idler_shaft",
-        ix,
-        iz,
-        layout.idler_shaft.start,
-        True,
-        phases["idler"],
-    )
+    place(idler_shaft, "idler_shaft", ix, iz, shaft_span.start, True, phases["idler"])
 
-    assembly.add_hardware(
-        f"{layout.carrier_bearing.spec.designation} ball bearing",
-        2,
-        "Carrier hubs in gearbox plates",
-    )
-    assembly.add_hardware(
-        f"{layout.idler_bearing.spec.designation} ball bearing",
-        2,
-        "Idler shaft in gearbox plates",
-    )
-    assembly.add_hardware(
-        f"{layout.crank_support_bearing.spec.designation} ball bearing",
-        1,
-        "Crank stub outboard support, left plate",
-    )
+    for bearing, where in (
+        (layout.carrier_bearing, "Carrier hubs in gearbox plates"),
+        (layout.input_bearing, "Input shaft in gearbox plates"),
+        (layout.idler_bearing, "Idler shaft in gearbox plates"),
+    ):
+        assembly.add_hardware(f"{bearing.spec.designation} ball bearing", 2, where)
     assembly.add_hardware(
         f"M3 threaded rod x {gap.length + 2 * layout.plate_thickness + 6:g} mm + 2 nuts",
         len(layout.standoff_centres()),
@@ -636,17 +684,20 @@ def _checked(layout: Optional[DrivetrainLayout]) -> DrivetrainLayout:
 def engine_assembly(
     layout: Optional[DrivetrainLayout] = None, crank_angle: float = 0.0
 ) -> Assembly:
-    """Block, head, crankshaft, rods, pistons and flywheel."""
+    """Block, head, crankshaft, rods, pistons, flywheel and engine mounts,
+    fore-and-aft above the gearbox."""
     layout = layout or DrivetrainLayout()
     assembly = Assembly(TransaxleSection.ENGINE.value, ENGINE_COLOR)
     add_engine(assembly, layout, crank_angle)
-    return assembly
+    frame = layout.engine_frame()
+    return assembly.relocate(frame.rotate_z, frame.origin)
 
 
 def gearbox_assembly(
     layout: Optional[DrivetrainLayout] = None, crank_angle: float = 0.0
 ) -> Assembly:
-    """Reduction gearbox: side plates, standoffs, crank pinion, compound idler."""
+    """Gearbox: side plates, standoffs, crank pinion, crown gear, input
+    pinion and idler gear."""
     layout = layout or DrivetrainLayout()
     assembly = Assembly(TransaxleSection.GEARBOX.value, GEARBOX_COLOR)
     add_gearbox(assembly, layout, crank_angle)
@@ -710,7 +761,7 @@ class RearTransaxle(EfficioObject):
     def __init__(
         self,
         crank_angle: float = 0.0,
-        cylinders: int = 2,
+        cylinders: int = 4,
         axle_stock: AxleStock = AxleStock.STEEL_D_FLAT,
         section: TransaxleSection = TransaxleSection.ALL,
     ):

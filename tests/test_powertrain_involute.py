@@ -1,6 +1,7 @@
 import math
 import unittest
 
+from efficio.objects.powertrain.gears.face import FaceGearGeometry, crown_mesh_phase
 from efficio.objects.powertrain.gears.involute import (
     InvoluteGearGeometry,
     centre_distance,
@@ -126,3 +127,56 @@ class TestPlanarHelpers(unittest.TestCase):
         self.assertTrue(span.overlaps(Span(3.0, 5.0)))
         self.assertFalse(span.overlaps(Span(4.0, 5.0)))
         self.assertEqual(span.shifted(2.0), Span(3.0, 6.0))
+
+
+class TestFaceGear(unittest.TestCase):
+    def setUp(self) -> None:
+        self.gear = FaceGearGeometry(1.5, 48, 12, 25.0, addendum_coefficient=0.8)
+
+    def test_base_pitch_matches_pinion_at_every_radius(self) -> None:
+        gear = self.gear
+        pinion_base_pitch = math.pi * 1.5 * math.cos(math.radians(25))
+        for r in (gear.inner_radius, gear.pitch_radius, gear.outer_radius):
+            pitch = 2 * math.pi * r / gear.teeth
+            self.assertAlmostEqual(
+                pitch * math.cos(gear.local_pressure_angle(r)), pinion_base_pitch
+            )
+
+    def test_standard_rack_at_pitch_radius(self) -> None:
+        gear = self.gear
+        r = gear.pitch_radius
+        self.assertAlmostEqual(gear.pitch_line_height(r), 0.0)
+        self.assertAlmostEqual(gear.local_pressure_angle(r), math.radians(25))
+        self.assertAlmostEqual(
+            2 * gear.half_thickness(r, 0.0), math.pi * 1.5 / 2 - gear.backlash
+        )
+
+    def test_tooth_limits(self) -> None:
+        gear = self.gear
+        self.assertLess(gear.inner_radius, gear.pitch_radius)
+        self.assertGreater(gear.outer_radius, gear.pitch_radius)
+        self.assertAlmostEqual(
+            2 * gear.half_thickness(gear.outer_radius, gear.addendum),
+            gear.min_tip_land,
+            places=6,
+        )
+        self.assertEqual(gear.problems(), [])
+        with self.assertRaises(ValueError):
+            gear.local_pressure_angle(10.0)
+        with self.assertRaises(ValueError):
+            FaceGearGeometry(1.5, 12, 12)
+
+    def test_sections_taper_toward_the_tip(self) -> None:
+        sections = self.gear.sections(5)
+        self.assertEqual(len(sections), 5)
+        for _, points in sections:
+            bottom, top = points[1][0], points[2][0]
+            self.assertGreater(bottom, top)
+            self.assertGreater(top, 0.0)
+
+    def test_crown_mesh_phase(self) -> None:
+        # Pinion tooth pointing at the crown: crown gap at the contact angle.
+        phase = crown_mesh_phase(180.0, 12, 48, 180.0)
+        self.assertAlmostEqual(phase, (180.0 + 3.75) % 7.5)
+        turned = crown_mesh_phase(190.0, 12, 48, 180.0)
+        self.assertAlmostEqual((turned - phase) % 7.5, 2.5)

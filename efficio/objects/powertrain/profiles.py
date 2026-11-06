@@ -50,6 +50,19 @@ def y_cylinder(
     )
 
 
+def x_cylinder(
+    radius: float, x0: float, x1: float, y: float = 0.0, z: float = 0.0
+) -> cq.Workplane:
+    """Cylinder whose axis is parallel to X (rotating +90 about Y maps Z to X)."""
+    return (
+        cq.Workplane("XY")
+        .circle(radius)
+        .extrude(x1 - x0)
+        .rotate((0, 0, 0), (0, 1, 0), 90)
+        .translate((x0, y, z))
+    )
+
+
 def box(
     x0: float, x1: float, y0: float, y1: float, z0: float, z1: float
 ) -> cq.Workplane:

@@ -25,7 +25,7 @@ from efficio.objects.powertrain.engine import (
     Piston,
 )
 from efficio.objects.powertrain.gearbox import BearingPlate, PlateHole, PlateSeat
-from efficio.objects.powertrain.gears import CompoundSpurGear, SpurGear
+from efficio.objects.powertrain.gears import CompoundSpurGear, CrownGear, SpurGear
 from efficio.objects.powertrain.layout import DrivetrainLayout, PlateSide
 from efficio.objects.powertrain.profiles import d_profile
 from efficio.objects.powertrain.shafts import Shaft, Standoff
@@ -98,6 +98,20 @@ class TestGears(unittest.TestCase):
         _, bounds, _ = _solid(gear)
         self.assertAlmostEqual(bounds[5] - bounds[2], 40.0, places=3)
         self.assertAlmostEqual(_size(bounds)[0], 57.0, delta=0.6)
+
+
+class TestCrownGear(unittest.TestCase):
+    def test_crown_gear_solid(self) -> None:
+        gear = CrownGear(
+            MetricModule.MODULE_1_5, 48, 12, Millimeter(5), Millimeter(5), True
+        )
+        _, bounds, volume = _solid(gear)
+        geometry = gear.geometry()
+        self.assertAlmostEqual(bounds[5] - bounds[2], gear.height, delta=0.05)
+        self.assertAlmostEqual(bounds[3] - bounds[0], 2 * gear.body_radius, delta=0.1)
+        disc = 3.14159 * gear.body_radius**2 * 5
+        self.assertGreater(volume, disc)
+        self.assertAlmostEqual(gear.pitch_plane, 5 + geometry.dedendum, places=6)
 
 
 class TestShafts(unittest.TestCase):
@@ -173,6 +187,14 @@ class TestGearbox(unittest.TestCase):
 
 
 class TestEngineParts(unittest.TestCase):
+    def test_side_mount_holes_remove_material(self) -> None:
+        with_mounts = EngineGeometry(cylinders=1)
+        without = EngineGeometry(cylinders=1, side_mounts=False)
+        self.assertLess(
+            _solid(EngineBlockHalf(with_mounts, upper=True))[2],
+            _solid(EngineBlockHalf(without, upper=True))[2],
+        )
+
     def test_block_halves_split_on_crank_axis(self) -> None:
         for engine in (EngineGeometry(), EngineGeometry(cylinders=1)):
             with self.subTest(cylinders=engine.cylinders):

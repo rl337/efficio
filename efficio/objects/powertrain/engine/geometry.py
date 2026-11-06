@@ -33,7 +33,7 @@ class EnginePose:
 
 @dataclass
 class EngineGeometry:
-    cylinders: int = 2
+    cylinders: int = 4
     bore: float = 22.0
     stroke: float = 20.0
     rod_length: float = 40.0
@@ -52,15 +52,33 @@ class EngineGeometry:
     head_thickness: float = 8.0
     deck_clearance: float = 0.5
     main_bearing: BallBearing = field(default=BEARING_608)
+    # How the block is held: bolts into the front face (bolted to a plate)
+    # and/or engine mounts bolted into the side walls.
+    front_flange: bool = False
+    side_mounts: bool = True
+    side_mount_depth: float = 8.0
 
     # ---------------------------------------------------------- crank train
     @property
     def crank_throw(self) -> float:
         return self.stroke / 2.0
 
+    def throw_offsets(self) -> List[float]:
+        """Standard four-stroke crank layouts (720/n deg firing interval).
+
+        Even counts are mirror-symmetric for balance: inline-4 is the
+        flat-plane 0/180/180/0 crank, inline-6 is 0/120/240/240/120/0.  Odd
+        counts space the throws evenly (inline-3: 0/240/120).
+        """
+        n = self.cylinders
+        interval = 720.0 / n
+        if n % 2:
+            return [(i * interval) % 360.0 for i in range(n)]
+        half = [(i * interval) % 360.0 for i in range(n // 2)]
+        return half + list(reversed(half))
+
     def throw_angle(self, cylinder: int, crank_angle: float) -> float:
-        """Evenly spaced throws (180 deg twin, 120 deg triple, ...)."""
-        return crank_angle + 360.0 * cylinder / self.cylinders
+        return crank_angle + self.throw_offsets()[cylinder]
 
     @property
     def web_inner_offset(self) -> float:
@@ -171,6 +189,19 @@ class EngineGeometry:
         above = self.crank_tunnel_radius + 2.0
         return [(-x, below), (x, below), (-x, above), (x, above)]
 
+    @property
+    def side_mount_height(self) -> float:
+        """Mount bolts go into the solid wall beside the bores, above the
+        crank tunnel."""
+        return (self.crank_tunnel_radius + self.deck_height) / 2.0
+
+    def side_mount_positions(self) -> List[Point]:
+        """Engine-local (y, z) of the tapped mount holes on each side wall."""
+        if not self.side_mounts:
+            return []
+        cylinders = sorted({0, min(1, self.cylinders - 1)})
+        return [(self.cylinder_y(i), self.side_mount_height) for i in cylinders]
+
     def centre_journals(self) -> List[Span]:
         return [
             Span(
@@ -258,6 +289,9 @@ class EngineGeometry:
         )
         if piston_bottom_at_bdc < self.crank_sweep_radius + 1.0:
             issues.append("piston skirt reaches crank webs at BDC")
+        wall_beside_bore = self.block_half_width - self.bore / 2.0
+        if self.side_mounts and self.side_mount_depth > wall_beside_bore - 1.0:
+            issues.append("engine mount bolts would break into the cylinder bores")
         if self.crankcase_relief_height + self.piston_height > self.deck_height + 4:
             issues.append("bore too short to guide the piston")
         issues.extend(self.rod_clearance_problems())

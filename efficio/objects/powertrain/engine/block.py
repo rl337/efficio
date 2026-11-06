@@ -16,6 +16,7 @@ from efficio.objects.powertrain.profiles import (
     box,
     cylinder,
     wrap,
+    x_cylinder,
     y_cylinder,
 )
 from efficio.objects.shapes import Shape
@@ -84,10 +85,15 @@ class EngineBlockHalf(EfficioObject):
                     COUNTERBORE_RADIUS_MM, -hw - 1, -hw + COUNTERBORE_DEPTH_MM, x, y
                 )
             )
-        for x, z in e.flange_bolt_offsets():
-            block = block.cut(
-                y_cylinder(M3_TAP_RADIUS_MM, -1.0, FLANGE_BOLT_DEPTH_MM, x, z)
-            )
+        if e.front_flange:
+            for x, z in e.flange_bolt_offsets():
+                block = block.cut(
+                    y_cylinder(M3_TAP_RADIUS_MM, -1.0, FLANGE_BOLT_DEPTH_MM, x, z)
+                )
+        depth = e.side_mount_depth
+        for y, z in e.side_mount_positions():
+            block = block.cut(x_cylinder(M3_TAP_RADIUS_MM, -hw - 1, -hw + depth, y, z))
+            block = block.cut(x_cylinder(M3_TAP_RADIUS_MM, hw - depth, hw + 1, y, z))
         return block
 
     def shape(self) -> Optional[Shape]:
