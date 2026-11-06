@@ -1,12 +1,7 @@
 from efficio.measures import Inch, Millimeter
 from efficio.objects.gears import SphericalGear
-from efficio.objects.mold_tooling import (
-    PRUSA_MK4,
-    CottlePurpose,
-    MoldPolarity,
-    MoldTooling,
-)
-from efficio.objects.vases import TriangularFlaskVase
+from efficio.objects.molds import PRUSA_MK4, CottlePurpose, MoldPolarity, MoldTooling
+from efficio.objects.vessels import TriangularFlaskVase
 
 
 def resin_spherical_gear_tooling() -> MoldTooling:

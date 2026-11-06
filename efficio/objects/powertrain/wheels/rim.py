@@ -4,8 +4,8 @@ from typing import Optional
 
 from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
+from efficio.objects.fasteners.threads import MetricThread
 from efficio.objects.powertrain.axles.hub import hex_socket_cutter
-from efficio.objects.powertrain.fits import M3_CLEARANCE_RADIUS_MM
 from efficio.objects.powertrain.profiles import (
     cylinder,
     hex_across_corners,
@@ -13,11 +13,6 @@ from efficio.objects.powertrain.profiles import (
     wrap,
 )
 from efficio.objects.shapes import Shape
-
-RIM_WALL_MM = 2.5
-RIM_LIP_HEIGHT_MM = 2.0
-RIM_LIP_WIDTH_MM = 2.0
-SPOKE_WIDTH_MM = 6.0
 
 
 class Rim(EfficioObject):
@@ -37,7 +32,12 @@ class Rim(EfficioObject):
         hex_depth: Measure,
         spokes: int,
         spoke_thickness: Measure = Millimeter(6.0),
-        axle_bore: Measure = Millimeter(2 * M3_CLEARANCE_RADIUS_MM),
+        axle_bore: Measure = Millimeter(MetricThread.M3.spec.clearance_hole),
+        rim_wall: Measure = Millimeter(2.5),
+        lip_height: Measure = Millimeter(2.0),
+        lip_width: Measure = Millimeter(2.0),
+        spoke_width: Measure = Millimeter(6.0),
+        hub_wall: Measure = Millimeter(3.0),
     ):
         self.diameter = diameter
         self.width = width
@@ -46,15 +46,23 @@ class Rim(EfficioObject):
         self.spokes = spokes
         self.spoke_thickness = spoke_thickness
         self.axle_bore = axle_bore
+        self.rim_wall = rim_wall
+        self.lip_height = lip_height
+        self.lip_width = lip_width
+        self.spoke_width = spoke_width
+        self.hub_wall = hub_wall
 
     def hub_length(self) -> float:
         return self.hex_depth.value() + self.spoke_thickness.value()
 
     def hub_radius(self) -> float:
-        return hex_across_corners(self.hex_across_flats.value()) / 2 + 3.0
+        return (
+            hex_across_corners(self.hex_across_flats.value()) / 2
+            + self.hub_wall.value()
+        )
 
     def tire_width(self) -> float:
-        return self.width.value() - 2 * RIM_LIP_WIDTH_MM
+        return self.width.value() - 2 * self.lip_width.value()
 
     def shape(self) -> Optional[Shape]:
         radius = self.diameter.value() / 2
@@ -62,18 +70,19 @@ class Rim(EfficioObject):
         hex_depth = self.hex_depth.value()
         hub_length = self.hub_length()
         spoke_thickness = self.spoke_thickness.value()
-        inner = radius - RIM_WALL_MM
+        inner = radius - self.rim_wall.value()
+        lip_width = self.lip_width.value()
 
         rim = cylinder(radius, 0.0, width).cut(cylinder(inner, -1.0, width + 1.0))
-        for z0 in (0.0, width - RIM_LIP_WIDTH_MM):
+        for z0 in (0.0, width - lip_width):
             rim = rim.union(
-                cylinder(radius + RIM_LIP_HEIGHT_MM, z0, z0 + RIM_LIP_WIDTH_MM).cut(
-                    cylinder(inner + 0.5, z0 - 1.0, z0 + RIM_LIP_WIDTH_MM + 1.0)
+                cylinder(radius + self.lip_height.value(), z0, z0 + lip_width).cut(
+                    cylinder(inner + 0.5, z0 - 1.0, z0 + lip_width + 1.0)
                 )
             )
         rim = rim.union(cylinder(self.hub_radius(), 0.0, hub_length))
 
-        half = SPOKE_WIDTH_MM / 2
+        half = self.spoke_width.value() / 2
         span = inner + 0.5
         for i in range(self.spokes):
             spoke = prism(

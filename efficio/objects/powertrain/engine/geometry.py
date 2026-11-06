@@ -10,6 +10,7 @@ import math
 from dataclasses import dataclass, field
 from typing import List
 
+from efficio.objects.fasteners.threads import MetricThread
 from efficio.objects.powertrain.bearings import BEARING_608, BallBearing
 from efficio.objects.powertrain.planar import (
     Point,
@@ -57,6 +58,34 @@ class EngineGeometry:
     front_flange: bool = False
     side_mounts: bool = True
     side_mount_depth: float = 8.0
+    fastener: MetricThread = MetricThread.M3
+    # Part proportions (walls and bosses around holes).
+    web_counterweight_margin: float = 8.0  # journal boss beyond the journal
+    web_pin_wall: float = 3.0
+    rod_big_end_wall: float = 3.0
+    rod_small_end_wall: float = 2.0
+    wrist_pin_inset: float = 1.0  # each end, inside the piston skirt
+    tunnel_clearance: float = 2.5  # crank sweep to crankcase wall
+    relief_height_margin: float = 4.0  # relief pocket above the tunnel
+    piston_wall: float = 2.0
+    piston_crown: float = 4.0
+    piston_boss_half_size: float = 4.0
+    ring_groove_from_crown: float = 2.0
+    ring_groove_width: float = 1.0
+    ring_groove_depth: float = 0.7
+    head_recess_depth: float = 1.5
+    # Bolt patterns and hole depths.
+    head_bolt_offset: float = 3.0  # outside the bore, across the block
+    head_bolt_pitch_inset: float = 1.0  # along the block, inside the bore radius
+    head_bolt_depth: float = 15.0
+    split_bolt_inset: float = 4.0  # from the block side
+    split_bolt_tap_depth: float = 15.0
+    flange_bolt_offset: float = 1.0  # outside the bore
+    flange_bolt_low_inset: float = 6.0  # above the block bottom
+    flange_bolt_high_offset: float = 2.0  # above the crank tunnel
+    flange_bolt_depth: float = 10.0
+    sweep_clearance: float = 0.5  # rod to bore / relief during the sweep
+    journal_hole_clearance: float = 0.5  # crank journal through the end walls
 
     # ---------------------------------------------------------- crank train
     @property
@@ -91,19 +120,19 @@ class EngineGeometry:
     @property
     def web_journal_radius(self) -> float:
         """Journal boss doubles as the counterweight."""
-        return self.crank_journal_diameter / 2.0 + 8.0
+        return self.crank_journal_diameter / 2.0 + self.web_counterweight_margin
 
     @property
     def web_pin_radius(self) -> float:
-        return self.crankpin_diameter / 2.0 + 3.0
+        return self.crankpin_diameter / 2.0 + self.web_pin_wall
 
     @property
     def rod_big_end_radius(self) -> float:
-        return self.crankpin_diameter / 2.0 + 3.0
+        return self.crankpin_diameter / 2.0 + self.rod_big_end_wall
 
     @property
     def rod_small_end_radius(self) -> float:
-        return self.wrist_pin_diameter / 2.0 + 2.0
+        return self.wrist_pin_diameter / 2.0 + self.rod_small_end_wall
 
     @property
     def piston_boss_gap(self) -> float:
@@ -111,7 +140,7 @@ class EngineGeometry:
 
     @property
     def wrist_pin_length(self) -> float:
-        return self.bore - 2.0
+        return self.bore - 2 * self.wrist_pin_inset
 
     @property
     def crank_sweep_radius(self) -> float:
@@ -133,7 +162,7 @@ class EngineGeometry:
 
     @property
     def crank_tunnel_radius(self) -> float:
-        return self.crank_sweep_radius + 2.5
+        return self.crank_sweep_radius + self.tunnel_clearance
 
     @property
     def block_half_width(self) -> float:
@@ -160,12 +189,12 @@ class EngineGeometry:
 
     @property
     def crankcase_relief_height(self) -> float:
-        return self.crank_tunnel_radius + 4.0
+        return self.crank_tunnel_radius + self.relief_height_margin
 
     def head_bolt_positions(self) -> List[Point]:
         """Engine-local (x, y) of head bolts, four around each bore."""
-        dx = self.bore / 2.0 + 3.0
-        dy = self.bore / 2.0 - 1.0
+        dx = self.bore / 2.0 + self.head_bolt_offset
+        dy = self.bore / 2.0 - self.head_bolt_pitch_inset
         return [
             (sx * dx, self.cylinder_y(i) + sy * dy)
             for i in range(self.cylinders)
@@ -175,7 +204,7 @@ class EngineGeometry:
 
     def split_bolt_positions(self) -> List[Point]:
         """Engine-local (x, y) of the vertical bolts joining the block halves."""
-        x = self.block_half_width - 4.0
+        x = self.block_half_width - self.split_bolt_inset
         return [
             (sx * x, y)
             for y in (self.end_wall / 2.0, self.block_length - self.end_wall / 2.0)
@@ -184,9 +213,9 @@ class EngineGeometry:
 
     def flange_bolt_offsets(self) -> List[Point]:
         """(x, z) relative to the crank axis of bolts into the y = 0 face."""
-        x = self.bore / 2.0 + 1.0
-        below = -(self.block_half_width - 6.0)
-        above = self.crank_tunnel_radius + 2.0
+        x = self.bore / 2.0 + self.flange_bolt_offset
+        below = -(self.block_half_width - self.flange_bolt_low_inset)
+        above = self.crank_tunnel_radius + self.flange_bolt_high_offset
         return [(-x, below), (x, below), (-x, above), (x, above)]
 
     @property
@@ -253,9 +282,9 @@ class EngineGeometry:
         while angle < 360.0:
             for x, z in self.rod_outline(angle):
                 if z > self.crankcase_relief_height:
-                    limit = self.bore / 2.0 - 0.5
+                    limit = self.bore / 2.0 - self.sweep_clearance
                 elif z > self.crank_tunnel_radius - 3.0:
-                    limit = self.crankcase_relief_half_width - 0.5
+                    limit = self.crankcase_relief_half_width - self.sweep_clearance
                 else:
                     continue
                 if abs(x) > limit:
@@ -275,8 +304,9 @@ class EngineGeometry:
             issues.append("first crank web hits the block end wall")
         if self.cylinder_spacing < self.bore + 6.0:
             issues.append("cylinder walls too thin")
-        head_bolt_x = self.bore / 2.0 + 3.0
-        if self.block_half_width < head_bolt_x + 1.7 + 2.0:
+        head_bolt_x = self.bore / 2.0 + self.head_bolt_offset
+        clearance = self.fastener.spec.clearance_radius
+        if self.block_half_width < head_bolt_x + clearance + 2.0:
             issues.append("block too narrow for head bolts")
         if self.main_bearing.seat_radius > self.block_half_width - 2.0:
             issues.append("main bearing does not fit the block end wall")

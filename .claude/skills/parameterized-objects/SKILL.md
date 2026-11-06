@@ -101,10 +101,12 @@ pinion" exists only in the transaxle builder.
 - [ ] Tests build the object with at least one non-default parameter set as
       well as the standard one, and check `problems()` rejects bad values.
 
-## Known non-conforming code
+## Reference implementations
 
-`efficio/objects/m3.py` predates this rule. Its M3 dimensions are module
-constants and its classes are M3-only. Bring it into line when it is next
-touched: a generic `Bolt`/`HexNut`/`BoltChannel` in `efficio/objects/fasteners/`
-driven by a `MetricThread` catalogue, with `M3Bolt(length)` as the
-standard-level variant.
+- `efficio/objects/fasteners/`: `MetricThread` catalogue (ISO 4762 / ISO 4032
+  values), generic `Bolt`, `HexNut`, `BoltChannel`, and `M3Bolt(length)` etc.
+  as the standard-level variants.
+- `efficio/machines.py`: `StandardMachine` catalogue of build volumes.
+- `efficio/objects/powertrain/engine/geometry.py`: every wall, inset and
+  bolt depth is a field with the old literal as its default, and the bolt size
+  is a `fastener: MetricThread` field.

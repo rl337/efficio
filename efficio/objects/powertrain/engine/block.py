@@ -10,7 +10,6 @@ import cadquery as cq
 
 from efficio.objects.base import EfficioObject
 from efficio.objects.powertrain.engine.geometry import EngineGeometry
-from efficio.objects.powertrain.fits import M3_CLEARANCE_RADIUS_MM, M3_TAP_RADIUS_MM
 from efficio.objects.powertrain.profiles import (
     bearing_seat_cutter,
     box,
@@ -20,12 +19,6 @@ from efficio.objects.powertrain.profiles import (
     y_cylinder,
 )
 from efficio.objects.shapes import Shape
-
-HEAD_BOLT_DEPTH_MM = 15.0
-SPLIT_BOLT_TAP_DEPTH_MM = 15.0
-FLANGE_BOLT_DEPTH_MM = 10.0
-COUNTERBORE_RADIUS_MM = 3.0
-COUNTERBORE_DEPTH_MM = 3.0
 
 
 def _y_axis(workplane: cq.Workplane, y: float, toward_positive_y: bool) -> cq.Workplane:
@@ -47,7 +40,10 @@ class EngineBlockHalf(EfficioObject):
         length = e.block_length
         wall = e.end_wall
         deck = e.deck_height
-        journal_clearance = e.crank_journal_diameter / 2 + 0.5
+        journal_clearance = e.crank_journal_diameter / 2 + e.journal_hole_clearance
+        bolt = e.fastener.spec
+        tap, clear = bolt.tap_radius, bolt.clearance_radius
+        counterbore = bolt.head_radius + 0.25
 
         block = box(-hw, hw, 0.0, length, -hw, deck)
         block = block.cut(y_cylinder(e.crank_tunnel_radius, wall, length - wall))
@@ -72,28 +68,20 @@ class EngineBlockHalf(EfficioObject):
                 )
             )
         for x, y in e.head_bolt_positions():
-            block = block.cut(
-                cylinder(M3_TAP_RADIUS_MM, deck - HEAD_BOLT_DEPTH_MM, deck + 1, x, y)
-            )
+            block = block.cut(cylinder(tap, deck - e.head_bolt_depth, deck + 1, x, y))
         for x, y in e.split_bolt_positions():
+            block = block.cut(cylinder(tap, -0.1, e.split_bolt_tap_depth, x, y))
+            block = block.cut(cylinder(clear, -hw - 1, 0.0, x, y))
             block = block.cut(
-                cylinder(M3_TAP_RADIUS_MM, -0.1, SPLIT_BOLT_TAP_DEPTH_MM, x, y)
-            )
-            block = block.cut(cylinder(M3_CLEARANCE_RADIUS_MM, -hw - 1, 0.0, x, y))
-            block = block.cut(
-                cylinder(
-                    COUNTERBORE_RADIUS_MM, -hw - 1, -hw + COUNTERBORE_DEPTH_MM, x, y
-                )
+                cylinder(counterbore, -hw - 1, -hw + bolt.head_height, x, y)
             )
         if e.front_flange:
             for x, z in e.flange_bolt_offsets():
-                block = block.cut(
-                    y_cylinder(M3_TAP_RADIUS_MM, -1.0, FLANGE_BOLT_DEPTH_MM, x, z)
-                )
+                block = block.cut(y_cylinder(tap, -1.0, e.flange_bolt_depth, x, z))
         depth = e.side_mount_depth
         for y, z in e.side_mount_positions():
-            block = block.cut(x_cylinder(M3_TAP_RADIUS_MM, -hw - 1, -hw + depth, y, z))
-            block = block.cut(x_cylinder(M3_TAP_RADIUS_MM, hw - depth, hw + 1, y, z))
+            block = block.cut(x_cylinder(tap, -hw - 1, -hw + depth, y, z))
+            block = block.cut(x_cylinder(tap, hw - depth, hw + 1, y, z))
         return block
 
     def shape(self) -> Optional[Shape]:
@@ -110,8 +98,6 @@ class EngineBlockHalf(EfficioObject):
 class CylinderHead(EfficioObject):
     """Flat head plate with combustion recesses; local z = 0 sits on the deck."""
 
-    RECESS_DEPTH_MM = 1.5
-
     def __init__(self, engine: EngineGeometry):
         self.engine = engine
 
@@ -122,8 +108,10 @@ class CylinderHead(EfficioObject):
         head = box(-hw, hw, 0.0, e.block_length, 0.0, t)
         for i in range(e.cylinders):
             head = head.cut(
-                cylinder(e.bore / 2, -1.0, self.RECESS_DEPTH_MM, 0.0, e.cylinder_y(i))
+                cylinder(e.bore / 2, -1.0, e.head_recess_depth, 0.0, e.cylinder_y(i))
             )
         for x, y in e.head_bolt_positions():
-            head = head.cut(cylinder(M3_CLEARANCE_RADIUS_MM, -1.0, t + 1.0, x, y))
+            head = head.cut(
+                cylinder(e.fastener.spec.clearance_radius, -1.0, t + 1.0, x, y)
+            )
         return wrap(head)

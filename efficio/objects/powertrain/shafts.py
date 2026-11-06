@@ -4,7 +4,8 @@ from typing import Optional, Sequence
 
 from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
-from efficio.objects.powertrain.fits import M3_CLEARANCE_RADIUS_MM, PRESS_CLEARANCE_MM
+from efficio.objects.fasteners.threads import MetricThread
+from efficio.objects.powertrain.fits import PRESS_CLEARANCE_MM
 from efficio.objects.powertrain.profiles import (
     cylinder,
     d_profile,
@@ -62,7 +63,7 @@ class Standoff(EfficioObject):
         self,
         length: Measure,
         outer_diameter: Measure,
-        bore: Measure = Millimeter(2 * M3_CLEARANCE_RADIUS_MM),
+        bore: Measure = Millimeter(MetricThread.M3.spec.clearance_hole),
     ):
         self.length = length
         self.outer_diameter = outer_diameter

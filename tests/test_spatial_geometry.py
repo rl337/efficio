@@ -15,6 +15,7 @@ import numpy as np
 
 import efficio
 from efficio.measures import Inch, Millimeter
+from efficio.objects.fasteners import M3Bolt, M3BoltAssembly, M3BoltChannel
 from efficio.objects.gears import (
     AbstractGear,
     GearToothType,
@@ -22,7 +23,6 @@ from efficio.objects.gears import (
     SphericalGear,
     TrapezoidalGear,
 )
-from efficio.objects.m3 import M3Bolt, M3BoltAssembly, M3BoltChannel
 from efficio.objects.primitives import Box, Cylinder, Sphere
 from efficio.objects.shapes import Shape
 
