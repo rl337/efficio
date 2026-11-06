@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
 import cadquery as cq
+import numpy as np
 from PIL import Image, ImageDraw
 from reportlab.graphics import renderPM  # type: ignore
 from svglib.svglib import svg2rlg  # type: ignore
@@ -250,17 +251,56 @@ def create_color_view(
     show_grid: bool = True,
 ) -> Image.Image:
     width, height = style.panel_width, style.panel_height
-    polygons, viewport = preview.paint_order(
-        triangles, view, width, height, style.margin
+    # Keep vertex depths: a triangle's average depth cannot resolve crossing
+    # surfaces, or a small foreground feature over a large sloping triangle.
+    projected = [
+        ([view.project(point) for point in triangle], color, triangle)
+        for triangle, color in triangles
+    ]
+    viewport = preview.Viewport.fit(
+        ((x, y) for points, _, _ in projected for x, y, _ in points),
+        width,
+        height,
+        style.margin,
     )
     image = Image.new("RGB", (width, height), "white")
     if show_grid:
         extent = max(width, height) / viewport.scale
         image = _draw_guides(image, extent, style)
-    draw = ImageDraw.Draw(image)
-    for pixels, color, _ in polygons:
-        draw.polygon(pixels, fill=color, outline=color)
-    return image
+    pixels = np.array(image)
+    depths = np.full((height, width), -np.inf)
+    for points, color, triangle in projected:
+        screen = [viewport.to_pixels(x, y) for x, y, _ in points]
+        (ax, ay), (bx, by), (cx, cy) = screen
+        area = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
+        # Edge-on/degenerate triangles have no area and must not draw lines
+        # through visible faces. Both windings otherwise use the same test.
+        if abs(area) < 1e-12:
+            continue
+        left = max(0, math.ceil(min(ax, bx, cx) - 0.5))
+        right = min(width - 1, math.floor(max(ax, bx, cx) - 0.5))
+        top = max(0, math.ceil(min(ay, by, cy) - 0.5))
+        bottom = min(height - 1, math.floor(max(ay, by, cy) - 0.5))
+        if left > right or top > bottom:
+            continue
+        shaded = preview.shade(color, preview.triangle_normal(triangle), view)
+        xs = np.arange(left, right + 1, dtype=float)[None, :] + 0.5
+        # Bound temporary memory even for a triangle covering the whole panel.
+        for row in range(top, bottom + 1, 64):
+            end = min(row + 64, bottom + 1)
+            ys = np.arange(row, end, dtype=float)[:, None] + 0.5
+            wa = ((by - cy) * (xs - cx) + (cx - bx) * (ys - cy)) / area
+            wb = ((cy - ay) * (xs - cx) + (ax - cx) * (ys - cy)) / area
+            wc = 1.0 - wa - wb
+            # Inclusive edges avoid cracks on shared coplanar tessellation
+            # edges. Equal-depth samples retain their first surface.
+            inside = (wa >= -1e-10) & (wb >= -1e-10) & (wc >= -1e-10)
+            depth = wa * points[0][2] + wb * points[1][2] + wc * points[2][2]
+            current = depths[row:end, left : right + 1]
+            visible = inside & (depth > current)
+            current[visible] = depth[visible]
+            pixels[row:end, left : right + 1][visible] = shaded
+    return Image.fromarray(pixels)
 
 
 def _draw_legend(

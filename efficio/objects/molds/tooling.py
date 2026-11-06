@@ -1,4 +1,6 @@
+import math
 import os
+import warnings
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional, Tuple
@@ -6,7 +8,7 @@ from typing import List, Optional, Tuple
 from efficio.machines import PRUSA_MK4, BuildVolume, PrinterProfile
 from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
-from efficio.objects.fasteners import BoltChannel, MetricThread
+from efficio.objects.fasteners import BoltAssembly, MetricThread
 from efficio.objects.shapes import Orientation, Shape, new_shape
 
 
@@ -33,17 +35,24 @@ class MoldFeatures:
     """Sizes of the pour, vent, registration and fastening features.
 
     Defaults suit small resin and plaster casts on a desktop printer.
+
+    ``channel_depth_fraction`` is deprecated and ignored when supplied. Ports
+    now reach the master minimum Z so shallow fractions cannot leave them in
+    the silicone padding. The field remains accepted for source compatibility;
+    supplying a legacy value emits DeprecationWarning when tooling is created.
     """
 
-    registration_pin_radius: float = 2.0
+    registration_pin_radius: float = 1.0
     registration_pin_length: float = 4.0
     sprue_radius: float = 4.0
     vent_radius: float = 2.0
-    vent_offset: float = 12.0  # sprue to vent, capped by the mold depth
-    channel_depth_fraction: float = 0.85  # how far pour channels reach down
+    vent_offset: float = 12.0  # sprue to vent, capped by master Y span
+    channel_depth_fraction: Optional[float] = None  # deprecated compatibility field
     registration_offset_fraction: float = 0.25  # pins from the centre
     fastener_offset_fraction: float = 0.3  # cottle bolts from the centre
     fastener: MetricThread = MetricThread.M3
+    fastener_boss_wall: float = 2.0
+    registration_clearance: float = 0.2
 
 
 @dataclass
@@ -73,6 +82,15 @@ class MoldTooling(EfficioObject):
     artifacts. Cottle halves are a functional parting split for assembly; if a
     section cannot fit the printer, validate_for_printer raises so a later
     manufacturing subdivision can be introduced explicitly.
+
+    These are geometry prototypes, not production-ready casting tools. Silicone
+    parting/release cuts, plaster mother-mold sections and fixtures, sealing,
+    print orientation and physical casting validation remain to be designed.
+    Positive output is an exact master replica; it is not a complete plaster
+    mold. Its envelope clearance represents plaster volume, not silicone.
+    The cottle alone does not suspend or position this positive intermediate.
+    Pour ports currently use bounds-based placement and require master-specific
+    intersection checks for concave/hollow profiles.
     """
 
     def __init__(
@@ -85,6 +103,49 @@ class MoldTooling(EfficioObject):
         purpose: CottlePurpose = CottlePurpose.BOTH,
         features: MoldFeatures = MoldFeatures(),
     ):
+        positive_dimensions = (
+            silicone_thickness.value(),
+            cottle_wall.value(),
+            features.registration_pin_radius,
+            features.registration_pin_length,
+            features.sprue_radius,
+            features.vent_radius,
+            features.fastener_boss_wall,
+        )
+        if any(not math.isfinite(value) or value <= 0 for value in positive_dimensions):
+            raise ValueError("Dimensions must be finite and positive")
+        for value in (features.registration_clearance, features.vent_offset):
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(
+                    "Clearance and vent offset must be finite and nonnegative"
+                )
+        for value in (
+            features.registration_offset_fraction,
+            features.fastener_offset_fraction,
+        ):
+            if not math.isfinite(value) or not 0 < value < 0.5:
+                raise ValueError(
+                    "Feature offset fractions must be finite and between 0 and 0.5"
+                )
+        if features.channel_depth_fraction is not None and (
+            not math.isfinite(features.channel_depth_fraction)
+            or not 0 < features.channel_depth_fraction <= 1
+        ):
+            raise ValueError(
+                "Legacy channel_depth_fraction must be finite and in (0, 1]"
+            )
+        socket_width = 2 * (
+            features.registration_pin_radius + features.registration_clearance
+        )
+        if socket_width >= cottle_wall.value():
+            raise ValueError("Registration socket must fit strictly within cottle wall")
+        if features.channel_depth_fraction is not None:
+            warnings.warn(
+                "channel_depth_fraction is deprecated and ignored; pour ports "
+                "reach the master minimum Z",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         self.master = master
         self.polarity = polarity
         self.silicone_thickness = silicone_thickness
@@ -137,33 +198,35 @@ class MoldTooling(EfficioObject):
         if not self._has_pour_features():
             return body
 
+        _, bounds = self._master_shape_and_bounds()
         top_z = center[2] + depth / 2
-        # Channels extend from above the block through most of its depth so they
-        # reliably open the top and reach the master cavity / positive core.
-        channel_height = depth * self.features.channel_depth_fraction
-        sprue = (
-            new_shape(Orientation.Front)
-            .box(
-                self.features.sprue_radius * 2,
-                self.features.sprue_radius * 2,
-                channel_height,
+        # Reach the full master depth, never stop in the padding above it.
+        bottom_z = bounds[2]
+        for x, y, radius in self._pour_ports(bounds):
+            channel = (
+                new_shape(Orientation.Front)
+                .circle(radius)
+                .extrude(top_z - bottom_z)
+                .translate(x, y, bottom_z)
             )
-            .translate(center[0], center[1], top_z - channel_height / 2)
-        )
-        vent = (
-            new_shape(Orientation.Front)
-            .box(
-                self.features.vent_radius * 2,
-                self.features.vent_radius * 2,
-                channel_height,
-            )
-            .translate(
-                center[0],
-                center[1] + min(depth, self.features.vent_offset),
-                top_z - channel_height / 2,
-            )
-        )
-        return body.cut(sprue).cut(vent)
+            body = body.cut(channel)
+        return body
+
+    def _pour_ports(
+        self, bounds: Tuple[float, float, float, float, float, float]
+    ) -> List[Tuple[float, float, float]]:
+        """Global port axes shared by silicone and cottle, within master bounds.
+
+        Bounds alone cannot guarantee vent connectivity for arbitrary hollow or
+        concave masters. Verify cavity intersections for each new master.
+        """
+        x = (bounds[0] + bounds[3]) / 2
+        y = (bounds[1] + bounds[4]) / 2
+        offset = min(self.features.vent_offset, (bounds[4] - bounds[1]) / 4)
+        return [
+            (x, y, self.features.sprue_radius),
+            (x, y + offset, self.features.vent_radius),
+        ]
 
     def silicone_shape(self) -> Shape:
         master, bounds = self._master_shape_and_bounds()
@@ -172,9 +235,9 @@ class MoldTooling(EfficioObject):
         if self.polarity is MoldPolarity.NEGATIVE:
             silicone = block.cut(master)
         else:
-            # Positive intermediate: master embedded in a silicone envelope so
-            # handling thickness is real material, not a bare master clone.
-            silicone = block.union(master)
+            # Preserve the complete positive profile. The envelope clearance
+            # is space for later plaster, not material to union to this pattern.
+            return master
 
         return self._apply_pour_vents(silicone, center, depth)
 
@@ -197,7 +260,7 @@ class MoldTooling(EfficioObject):
     def _registration_pin_centers(
         self, center: Tuple[float, float, float], length: float, depth: float
     ) -> List[Tuple[float, float, float]]:
-        y_offset = length * self.features.registration_offset_fraction
+        y_offset = length / 2 - self.cottle_wall.value() / 2
         z_offset = depth * self.features.registration_offset_fraction
         return [
             (center[0], center[1] + y_offset, center[2] + z_offset),
@@ -205,15 +268,13 @@ class MoldTooling(EfficioObject):
         ]
 
     def _fastener_cutter(self, width: float) -> Shape:
-        """Clearance column plus bolt/nut assembly envelope for head seats."""
-        channel = BoltChannel(self.features.fastener, Millimeter(width))
-        cutter = channel.cut()
+        """Actual shank/head/nut envelope, not its supporting column."""
+        spec = self.features.fastener.spec
+        cutter = BoltAssembly(
+            self.features.fastener, Millimeter(width - spec.head_height), True
+        ).shape()
         if cutter is None:
-            raise ValueError("bolt channel produced no cut geometry")
-
-        assembly = channel.bolt_assembly.shape()
-        if assembly is not None:
-            cutter = cutter.union(assembly)
+            raise ValueError("bolt assembly produced no geometry")
         return cutter
 
     def cottle_sections(self) -> List[ToolingSection]:
@@ -222,6 +283,20 @@ class MoldTooling(EfficioObject):
         wall = self.cottle_wall.value()
         half_width = width / 2
         pin_centers = self._registration_pin_centers(center, length, depth)
+        socket_radius = (
+            self.features.registration_pin_radius + self.features.registration_clearance
+        )
+        socket_half_length = (
+            self.features.registration_pin_length / 2
+            + self.features.registration_clearance
+        )
+        if socket_half_length >= half_width - wall:
+            raise ValueError("Registration socket is too long for cottle section")
+        if (
+            abs(depth * self.features.registration_offset_fraction) + socket_radius
+            >= depth / 2 - wall
+        ):
+            raise ValueError("Registration socket must stay below the open cottle rim")
 
         # Pour containment leaves the cottle open at the top; support/both keep
         # a full enclosure (both still gets pour holes cut through the top).
@@ -238,17 +313,41 @@ class MoldTooling(EfficioObject):
                 .translate(x_center, center[1], outer_z)
             )
 
-            inner_width = max(half_width - wall, wall)
-            inner_length = max(length - 2 * wall, wall)
-            inner_depth = max(outer_depth - (0 if open_top else 2 * wall), wall)
-            inner_x = center[0] + sign * (wall + inner_width / 2)
-            inner_z = outer_z if open_top else center[2]
+            # One shared cavity reaches the split plane on both halves.
+            # Per-half offset cavities leave walls colliding with silicone.
             cavity = (
                 new_shape(Orientation.Front)
-                .box(inner_width, inner_length, inner_depth)
-                .translate(inner_x, center[1], inner_z)
+                .box(width - 2 * wall, length - 2 * wall, depth - 2 * wall)
+                .translate(*center)
             )
             shell = shell.cut(cavity)
+
+            # Bosses remain outside the silicone envelope. Their material
+            # supports the head and hex nut seats instead of removing an entire
+            # oversized column through the thin enclosure walls.
+            spec = self.features.fastener.spec
+            boss_radius = max(spec.head_diameter, spec.nut_across_corners) / 2
+            boss_radius += self.features.fastener_boss_wall
+            boss_y = center[1] + length / 2 + boss_radius - wall / 2
+            offset = depth * self.features.fastener_offset_fraction
+            for z_offset in (-offset, offset):
+                boss = (
+                    new_shape(Orientation.Front)
+                    .circle(boss_radius)
+                    .extrude(half_width)
+                    .rotate(0, 90, 0)
+                    .translate(
+                        center[0] + (-half_width if sign < 0 else 0),
+                        boss_y,
+                        center[2] + z_offset,
+                    )
+                )
+                shell = shell.union(boss)
+                cutter = self._fastener_cutter(width)
+                cutter = cutter.rotate(0, 90, 0).translate(
+                    center[0] - width / 2, boss_y, center[2] + z_offset
+                )
+                shell = shell.cut(cutter)
 
             # Registration: pins on A (sign < 0), sockets on B (sign > 0).
             for pin_x, pin_y, pin_z in pin_centers:
@@ -264,35 +363,29 @@ class MoldTooling(EfficioObject):
                 if sign < 0:
                     shell = shell.union(pin)
                 else:
-                    shell = shell.cut(pin)
-
-            # Transverse fasteners (features.fastener) with assembly clearances.
-            offset = depth * self.features.fastener_offset_fraction
-            for z_offset in (-offset, offset):
-                cutter = self._fastener_cutter(width)
-                cutter = cutter.rotate(0, 90, 0).translate(
-                    center[0] - width / 2,
-                    center[1],
-                    center[2] + z_offset,
-                )
-                shell = shell.cut(cutter)
+                    clearance = self.features.registration_clearance
+                    socket = (
+                        new_shape(Orientation.Front)
+                        .box(
+                            self.features.registration_pin_length + 2 * clearance,
+                            self.features.registration_pin_radius * 2 + 2 * clearance,
+                            self.features.registration_pin_radius * 2 + 2 * clearance,
+                        )
+                        .translate(pin_x, pin_y, pin_z)
+                    )
+                    shell = shell.cut(socket)
 
             if self._has_pour_features() and not open_top:
                 # Matching pour/vent openings through the closed cottle roof.
                 top_z = center[2] + depth / 2
                 roof_cut_height = wall * 2
-                for y_off, radius in (
-                    (0.0, self.features.sprue_radius),
-                    (min(depth, self.features.vent_offset), self.features.vent_radius),
-                ):
+                _, bounds = self._master_shape_and_bounds()
+                for x, y, radius in self._pour_ports(bounds):
                     opening = (
                         new_shape(Orientation.Front)
-                        .box(radius * 2, radius * 2, roof_cut_height)
-                        .translate(
-                            center[0] + sign * (half_width / 2),
-                            center[1] + y_off,
-                            top_z - roof_cut_height / 2,
-                        )
+                        .circle(radius)
+                        .extrude(roof_cut_height)
+                        .translate(x, y, top_z - roof_cut_height)
                     )
                     shell = shell.cut(opening)
 

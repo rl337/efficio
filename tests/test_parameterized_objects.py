@@ -203,6 +203,7 @@ class TestParameterizedParts(unittest.TestCase):
         tooling = MoldTooling(
             master=SphericalGear(Millimeter(15), 12),
             polarity=MoldPolarity.NEGATIVE,
+            cottle_wall=Millimeter(8),  # Contain the enlarged registration sockets.
             features=MoldFeatures(
                 registration_pin_radius=3.0, fastener=MetricThread.M4
             ),
