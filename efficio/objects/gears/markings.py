@@ -19,16 +19,17 @@ _SEGMENTS: Dict[str, str] = {
     "i": "kj",
     "c": "tbl",
     "o": "tblr",
-    "0": "tblr",
-    "1": "r",
-    "2": "tmqbu",
-    "3": "tmqbr",
-    "4": "mlrq",
-    "5": "tmlqb",
-    "6": "tmlqbr",
-    "7": "tqr",
-    "8": "tmlqbr",
-    "9": "tmlqr",
+    # Seven-segment digits use independent upper/lower vertical strokes.
+    "0": "taqusb",
+    "1": "qs",
+    "2": "tqmub",
+    "3": "tqmsb",
+    "4": "amqs",
+    "5": "tamsb",
+    "6": "tamusb",
+    "7": "tqs",
+    "8": "taqmusb",
+    "9": "taqmsb",
     "T": "tv",
     "M": "lrxy",
     "P": "tmlq",
@@ -83,10 +84,10 @@ class GearFaceMarker:
     """Cuts readable, radially oriented stencil text into a flat gear face.
 
     Text ordering and glyph orientation are intentionally separate.  Looking at
-    the marked +Z face, characters progress clockwise along the requested arc,
+    the marked +Z face, characters progress counterclockwise along the requested arc,
     while the top of every glyph points radially inward toward the gear axis.
-    This prevents the mirror/orientation coupling that previously made curved
-    labels easy to get subtly wrong.
+    This direction follows each inward-facing glyph's local +X (reading right),
+    rather than reversing the text while leaving individual glyphs unmirrored.
     """
 
     def __init__(self, thickness: float, style: GearMarkingStyle = GearMarkingStyle()):
@@ -126,6 +127,10 @@ class GearFaceMarker:
                 yield 0.0, -height / 2 + i_stem_height + 1.5 * stroke, stroke, stroke
             elif segment == "q":
                 yield width / 2.0, height / 4.0, stroke, height / 2.0
+            elif segment == "a":
+                yield -width / 2.0, height / 4.0, stroke, height / 2.0
+            elif segment == "s":
+                yield width / 2.0, -height / 4.0, stroke, height / 2.0
             elif segment == "u":
                 yield -width / 2.0, -height / 4.0, stroke, height / 2.0
             elif segment == "x":
@@ -134,15 +139,15 @@ class GearFaceMarker:
                 yield width / 4.0, height / 4.0, stroke, height * 0.70
 
     def character_angles(self, marking: GearArcMarking) -> List[float]:
-        """Angles in display order when the +Z gear face is viewed directly."""
+        """Counterclockwise angles following inward-facing glyphs' local +X."""
         if not marking.text:
             return []
         if len(marking.text) == 1:
             return [marking.center_degrees]
         return [
             marking.center_degrees
-            + marking.span_degrees / 2.0
-            - marking.span_degrees * index / (len(marking.text) - 1)
+            - marking.span_degrees / 2.0
+            + marking.span_degrees * index / (len(marking.text) - 1)
             for index in range(len(marking.text))
         ]
 

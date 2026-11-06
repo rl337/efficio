@@ -22,14 +22,79 @@ def _solid(shape: Shape) -> cq.Shape:
 
 
 class TestGearMarkings(unittest.TestCase):
-    def test_clockwise_order_is_independent_of_orientation(self) -> None:
+    def test_counterclockwise_order_follows_inward_glyph_reading_direction(
+        self,
+    ) -> None:
         marker = GearFaceMarker(8)
         marking = GearArcMarking("T M", 15, 90, 60, 3)
-        self.assertEqual(marker.character_angles(marking), [120, 90, 60])
+        self.assertEqual(marker.character_angles(marking), [60, 90, 120])
         self.assertEqual(
             marker.character_angles(GearArcMarking("T", 15, 37, 60, 3)), [37]
         )
         self.assertEqual(marker.character_angles(GearArcMarking("", 15, 37, 60, 3)), [])
+
+    def test_progression_follows_glyph_positive_x_on_top_and_bottom_arcs(self) -> None:
+        marker = GearFaceMarker(8)
+        for center in (90, 270):
+            marking = GearArcMarking("123", 15, center, 60, 4)
+            angles = marker.character_angles(marking)
+            for first, second in zip(angles, angles[1:]):
+                theta, following = map(math.radians, (first, second))
+                dx = marking.radius * (math.cos(following) - math.cos(theta))
+                dy = marking.radius * (math.sin(following) - math.sin(theta))
+                # The cutter rotates local +X by theta+90. Progress toward the
+                # next character must have a positive projection on that axis.
+                reading_x = (
+                    math.cos(theta + math.pi / 2),
+                    math.sin(theta + math.pi / 2),
+                )
+                self.assertGreater(dx * reading_x[0] + dy * reading_x[1], 0)
+
+    def test_digits_have_distinct_correct_actual_seven_segment_geometry(self) -> None:
+        marker = GearFaceMarker(8)
+        blank = new_shape(Orientation.Front).circle(25).extrude(8)
+        # Independent probes at each half-stroke's center, in local glyph axes.
+        probes = {
+            "top": (0, 2),
+            "ul": (-1.2, 1),
+            "ur": (1.2, 1),
+            "middle": (0, 0),
+            "ll": (-1.2, -1),
+            "lr": (1.2, -1),
+            "bottom": (0, -2),
+        }
+        expected = {
+            "0": {"top", "ul", "ur", "ll", "lr", "bottom"},
+            "1": {"ur", "lr"},
+            "2": {"top", "ur", "middle", "ll", "bottom"},
+            "3": {"top", "ur", "middle", "lr", "bottom"},
+            "4": {"ul", "ur", "middle", "lr"},
+            "5": {"top", "ul", "middle", "lr", "bottom"},
+            "6": {"top", "ul", "middle", "ll", "lr", "bottom"},
+            "7": {"top", "ur", "lr"},
+            "8": set(probes),
+            "9": {"top", "ul", "ur", "middle", "lr", "bottom"},
+        }
+        geometries = set()
+        for digit, occupied in expected.items():
+            cutters: list[Shape] = []
+
+            def capture(shape: Shape, cutter: Shape) -> Shape:
+                cutters.append(cutter)
+                return shape
+
+            # theta=270 rotates local axes by 360 degrees, keeping +X/+Y.
+            with patch.object(type(blank), "cut", capture):
+                marker.cut_arc(blank, GearArcMarking(digit, 15, 270, 0, 4))
+            bounds = [_solid(cutter).BoundingBox() for cutter in cutters]
+            actual = {
+                name
+                for name, (x, y) in probes.items()
+                if any(b.xmin < x < b.xmax and b.ymin < y - 15 < b.ymax for b in bounds)
+            }
+            self.assertEqual(actual, occupied, digit)
+            geometries.add(frozenset(marker._segments(digit, 4)))
+        self.assertEqual(len(geometries), 10)
 
     def test_actual_asymmetric_glyph_cutter_points_inward_without_mirroring(
         self,
