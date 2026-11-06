@@ -250,7 +250,7 @@ class TestSubassemblies(unittest.TestCase):
             self.assembly.find("Transmission")
 
     def test_instances_are_split_without_loss(self) -> None:
-        total = sum(len(c.instances) for c in self.assembly.children)
+        total = sum(len(c.all_instances()) for c in self.assembly.children)
         self.assertEqual(total, len(self.assembly.all_instances()))
         self.assertEqual(self.assembly.instances, [])
 
@@ -263,10 +263,20 @@ class TestSubassemblies(unittest.TestCase):
 
     def test_parts_inherit_their_assembly_colour(self) -> None:
         colours = {label: color for label, _, color in self.assembly.preview_parts()}
-        self.assertEqual(colours["crank_pinion"], GEARBOX_COLOR)
-        self.assertEqual(colours["piston_0"], ENGINE_COLOR)
-        self.assertEqual(colours["diff_planet_P1.0"], DIFFERENTIAL_COLOR)
-        self.assertEqual(colours["wheel_rim_left"], WHEELS_COLOR)
+        self.assertEqual(
+            colours["crank_pinion"],
+            self.assembly.find("Engine output adapter").preview_color,
+        )
+        self.assertEqual(
+            colours["piston_0"], self.assembly.find("Piston and rod 1").preview_color
+        )
+        self.assertEqual(
+            colours["diff_planet_P1.0"],
+            self.assembly.find("Internal gears and pins").preview_color,
+        )
+        self.assertEqual(
+            colours["wheel_rim_left"], self.assembly.find("Left wheel").preview_color
+        )
         # Part-level override wins over the assembly colour.
         self.assertEqual(colours["wheel_tire_left"], TIRE_COLOR)
 
@@ -275,14 +285,23 @@ class TestSubassemblies(unittest.TestCase):
         self.assertEqual(legend["Gearbox"], GEARBOX_COLOR)
         self.assertEqual(len(legend), 5)
         self.assertEqual(
-            self.assembly.find("Gearbox").preview_legend(), [("Gearbox", GEARBOX_COLOR)]
+            [name for name, _ in self.assembly.find("Gearbox").preview_legend()],
+            ["Engine output adapter", "Gearbox support", "Input shaft", "Idler shaft"],
         )
 
     def test_bom_grouped_by_subassembly(self) -> None:
         rows = self.assembly.bom_rows()
         groups = {row["item"]: row["assembly"] for row in rows}
-        self.assertEqual(groups["crank_pinion"], "Rear transaxle / Gearbox")
-        self.assertEqual(groups["wheel_tire"], "Rear transaxle / Wheels")
+        self.assertEqual(
+            groups["crank_pinion"], "Rear transaxle / Gearbox / Engine output adapter"
+        )
+        self.assertEqual(
+            [(r["assembly"], r["quantity"]) for r in rows if r["item"] == "wheel_tire"],
+            [
+                ("Rear transaxle / Wheels / Left wheel", "1"),
+                ("Rear transaxle / Wheels / Right wheel", "1"),
+            ],
+        )
         markdown = self.assembly.bom_markdown()
         self.assertIn("## Rear transaxle / Differential", markdown)
 
@@ -295,7 +314,10 @@ class TestSubassemblies(unittest.TestCase):
             self.assertGreater(os.path.getsize(png), 0)
         obj = RearTransaxle(section=TransaxleSection.DIFFERENTIAL)
         self.assertEqual(obj.assembly().name, "Differential")
-        self.assertEqual(obj.preview_legend(), [("Differential", DIFFERENTIAL_COLOR)])
+        self.assertEqual(
+            [name for name, _ in obj.preview_legend()],
+            ["Carrier", "Internal gears and pins"],
+        )
 
 
 class TestPreviewColourInheritance(unittest.TestCase):

@@ -241,6 +241,37 @@ has a read-only home directory, optional runtime cache warnings do not imply
 failed checks. Bootstrap keeps its Poetry cache/config in the temporary tool directory;
 set `POETRY_CACHE_DIR` to a writable persistent cache to reuse downloads.
 
+### Drivetrain physical groupings
+
+The existing Engine, Gearbox, Differential, Axles and Wheels navigation sections
+now contain physical review groups. Engine contains Housing, Crankshaft, one
+Piston and rod group per cylinder, Flywheel and Engine mounts. Gearbox contains
+Engine output adapter, Gearbox support, Input shaft and Idler shaft. Differential
+contains Carrier and Internal gears and pins; Axles and Wheels each have separate
+left and right groups. The gearbox plates support the differential bearings:
+these sections do not imply independently removable cartridges.
+
+`Assembly.group_instances()` transfers existing occurrences into a child while
+retaining their solid objects, world placements and shared `PartSpec` identities.
+Each occurrence and hardware quantity has one owner. `bom_rows()` reports local
+quantities at each owning assembly path; `bom_totals()` rolls these up for the
+selected subtree. Repeated wheel definitions therefore produce one part per side
+and two in the root total. Conflicting same-name definitions are rejected; reuse
+the same `PartSpec` when the part really is shared. Ambiguous assembly or occurrence
+names require a full path. Use `all_instances()` to traverse nested groups.
+
+Generate four color-coded review boards and hierarchy/BOM JSON in Docker:
+
+```bash
+PYTHONPATH=. poetry run python scripts/render_drivetrain_groups.py --output-dir previews/grouping-review
+```
+
+These views preserve existing geometry; the isolated panels use independent
+scales. Bearings and most fasteners remain BOM-only. The engine output adapter
+contains only the modeled crank pinion: no unmodeled retention is invented.
+Grouping is for editorial review, not proof of fit, assembly sequence or build
+readiness. Part-specific colors (for example tire rubber) override group colors.
+
 ### Mold inspection and cutaways
 
 Generate geometry-derived example reports with the supported isolated environment:
