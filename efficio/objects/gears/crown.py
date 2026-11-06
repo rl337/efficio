@@ -5,15 +5,15 @@ from typing import List, Optional
 import cadquery as cq
 
 from efficio.measures import Measure, Millimeter
-from efficio.objects.base import EfficioObject
-from efficio.objects.gears import MetricModule, PressureAngle
-from efficio.objects.powertrain.gears.face import FaceGearGeometry
-from efficio.objects.powertrain.gears.spur import DEFAULT_BACKLASH, bore_allowance
-from efficio.objects.powertrain.profiles import bore_cutter, cylinder, wrap
+from efficio.objects.gears.base import AbstractCogwheel
+from efficio.objects.gears.face import FaceGearGeometry
+from efficio.objects.gears.spur import DEFAULT_BACKLASH, bore_allowance
+from efficio.objects.gears.standards import MetricModule, PressureAngle
+from efficio.objects.profiles import bore_cutter, cylinder, wrap
 from efficio.objects.shapes import Shape
 
 
-class CrownGear(EfficioObject):
+class CrownGear(AbstractCogwheel):
     """Disc with face teeth on its +Z side, meshing a spur pinion at 90 deg.
 
     The body occupies ``0 <= z <= body_thickness``; teeth rise from the root
@@ -43,6 +43,7 @@ class CrownGear(EfficioObject):
         self.backlash = backlash
         self.addendum_coefficient = addendum_coefficient
         self.body_rim = body_rim
+        super().__init__(Millimeter(self.body_radius), teeth, body_thickness)
 
     def geometry(self) -> FaceGearGeometry:
         return FaceGearGeometry(

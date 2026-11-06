@@ -4,14 +4,14 @@ from typing import Optional
 
 from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
-from efficio.objects.powertrain.engine.geometry import EngineGeometry
-from efficio.objects.powertrain.fits import (
+from efficio.objects.fits import (
     PRESS_CLEARANCE_MM,
     RUNNING_CLEARANCE_MM,
     SLIDING_CLEARANCE_MM,
 )
-from efficio.objects.powertrain.planar import hull_of_circles
-from efficio.objects.powertrain.profiles import box, cylinder, prism, wrap, y_cylinder
+from efficio.objects.planar import hull_of_circles
+from efficio.objects.powertrain.engine.geometry import EngineGeometry
+from efficio.objects.profiles import box, cylinder, prism, wrap, y_cylinder
 from efficio.objects.shapes import Shape
 
 

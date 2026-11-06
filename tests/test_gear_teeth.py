@@ -4,6 +4,7 @@ import tempfile
 import unittest
 
 import efficio.objects.gears
+import efficio.objects.gears.simple
 from efficio.measures import Millimeter
 from efficio.objects.gears import SphericalGear
 
@@ -33,7 +34,7 @@ class TestObjects(unittest.TestCase):
                 efficio.Millimeter(test["thickness"]),
                 efficio.objects.gears.GearToothType.RECTANGULAR,
             )
-            tooth = efficio.objects.gears._RectangularGearTooth(gear)
+            tooth = efficio.objects.gears.simple._RectangularGearTooth(gear)
             self.assertIsNotNone(tooth)
 
             self.assertAlmostEqual(

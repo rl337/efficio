@@ -11,14 +11,8 @@ from dataclasses import dataclass, field
 from typing import List
 
 from efficio.objects.fasteners.threads import MetricThread
+from efficio.objects.planar import Point, Span, circle_points, convex_hull, densify
 from efficio.objects.powertrain.bearings import BEARING_608, BallBearing
-from efficio.objects.powertrain.planar import (
-    Point,
-    Span,
-    circle_points,
-    convex_hull,
-    densify,
-)
 
 
 @dataclass(frozen=True)

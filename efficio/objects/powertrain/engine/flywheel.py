@@ -5,8 +5,8 @@ from typing import Optional
 
 from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
-from efficio.objects.powertrain.fits import SLIDING_CLEARANCE_MM
-from efficio.objects.powertrain.profiles import bore_cutter, cylinder, wrap
+from efficio.objects.fits import SLIDING_CLEARANCE_MM
+from efficio.objects.profiles import bore_cutter, cylinder, wrap
 from efficio.objects.shapes import Shape
 
 

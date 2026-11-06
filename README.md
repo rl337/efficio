@@ -70,18 +70,26 @@ undercut) with per-tooth backlash for printed parts.
 
 ### Package layout
 
-Parts live in `efficio.objects.powertrain`, grouped by function. Each one takes
-its own dimensions, so it can be reused outside this build:
+General gears live in `efficio.objects.gears`, so they can be used anywhere:
+`InvoluteGearGeometry` and `FaceGearGeometry` (pure); `SpurGear` (optional hub,
+round or D bore, cross-pin drive), `CompoundSpurGear` and `CrownGear`;
+`GearSystem` (the module, pressure angle and backlash that meshing gears
+share); and simple rectangular, trapezoidal and spherical gears. The general
+helpers `fits`, `profiles` (CadQuery) and `planar` (pure 2D) sit next to it in
+`efficio.objects`.
+
+Drivetrain parts live in `efficio.objects.powertrain`, grouped by function.
+Each one takes its own dimensions, so it can be reused outside this build:
 
 | Module | Contents |
 | --- | --- |
-| `gears` | `InvoluteGearGeometry` and `FaceGearGeometry` (pure), `SpurGear` (optional hub, round or D bore, cross-pin drive), `CompoundSpurGear`, `CrownGear` |
+| `gears` | `DRIVETRAIN_GEAR_SYSTEM` (module 1.5, 25°), `DrivetrainSpurGear` and `DrivetrainCrownGear`: the general gears fixed to that system |
 | `engine` | `EngineGeometry` (pure: any cylinder count, bore or stroke, derived bolt patterns, kinematics, rod-sweep check), `EngineBlockHalf`, `CylinderHead`, `CrankWeb`, `ConnectingRod`, `Piston`, `Flywheel` |
 | `gearbox` | `BearingPlate`, built from any list of `PlateSeat` / `PlateHole` |
-| `differential` | `SpurDifferentialGeometry` (pure), `SpurDifferentialCarrierHalf`, and `sun_gear` / `planet_gear` / `ring_gear`, which are `SpurGear`s |
+| `differential` | `SpurDifferentialGeometry` (pure), `SpurDifferentialCarrierHalf`, and `sun_gear` / `planet_gear` / `ring_gear`, which are `DrivetrainSpurGear`s |
 | `axles` | `PillowBlock` (any `StandardBearing`), `HexWheelAdapter` |
 | `wheels` | `Rim`, `Tire` |
-| shared | `shafts` (`Shaft`, `Standoff`), `bearings`, `fits`, `profiles` (CadQuery helpers), `planar` (pure 2D) |
+| shared | `shafts` (`Shaft`, `Standoff`), `bearings`, `dowels` |
 | `layout` | `DrivetrainLayout`: composes the engine and differential geometry, works out shaft centres from pitch radii, sets gear rotations so teeth mesh, and checks clearances |
 
 Axles can be ground steel rod (D-flat drive, tapped end) or **hardwood

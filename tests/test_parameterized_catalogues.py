@@ -12,8 +12,10 @@ from efficio.machines import (
 )
 from efficio.measures import Millimeter
 from efficio.objects.fasteners.threads import MetricThread
+from efficio.objects.gears.standards import GearSystem, MetricModule, PressureAngle
 from efficio.objects.powertrain.differential.geometry import SpurDifferentialGeometry
 from efficio.objects.powertrain.engine.geometry import EngineGeometry
+from efficio.objects.powertrain.gears.system import DRIVETRAIN_GEAR_SYSTEM
 from efficio.objects.powertrain.layout import DrivetrainLayout, PlateSide
 
 
@@ -99,6 +101,26 @@ class TestFastenerParameters(unittest.TestCase):
         self.assertEqual(
             len(engine.head_bolt_positions()),
             len(EngineGeometry().head_bolt_positions()),
+        )
+
+
+class TestGearSystems(unittest.TestCase):
+    def test_drivetrain_gear_system(self) -> None:
+        self.assertEqual(DRIVETRAIN_GEAR_SYSTEM.module, MetricModule.MODULE_1_5)
+        self.assertEqual(
+            DRIVETRAIN_GEAR_SYSTEM.pressure_angle, PressureAngle.HIGH_TORQUE
+        )
+
+    def test_layout_and_differential_default_to_drivetrain_system(self) -> None:
+        layout = DrivetrainLayout()
+        self.assertEqual(layout.gear_system, DRIVETRAIN_GEAR_SYSTEM)
+        self.assertEqual(layout.differential.gear_system, DRIVETRAIN_GEAR_SYSTEM)
+
+    def test_layout_reports_other_system(self) -> None:
+        fine = SpurDifferentialGeometry(module=1.0, pressure_angle=20.0, backlash=0.1)
+        self.assertEqual(
+            fine.gear_system,
+            GearSystem(MetricModule.MODULE_1, PressureAngle.MODERN, 0.1),
         )
 
 

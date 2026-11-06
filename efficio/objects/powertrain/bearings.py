@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List
 
-from efficio.objects.powertrain.fits import BEARING_SEAT_CLEARANCE_MM
+from efficio.objects.fits import BEARING_SEAT_CLEARANCE_MM
 
 
 @dataclass(frozen=True)

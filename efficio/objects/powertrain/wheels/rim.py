@@ -6,12 +6,7 @@ from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
 from efficio.objects.fasteners.threads import MetricThread
 from efficio.objects.powertrain.axles.hub import hex_socket_cutter
-from efficio.objects.powertrain.profiles import (
-    cylinder,
-    hex_across_corners,
-    prism,
-    wrap,
-)
+from efficio.objects.profiles import cylinder, hex_across_corners, prism, wrap
 from efficio.objects.shapes import Shape
 
 

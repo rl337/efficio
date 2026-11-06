@@ -9,7 +9,7 @@ import math
 from dataclasses import dataclass
 from typing import List
 
-from efficio.objects.powertrain.planar import Point, polar
+from efficio.objects.planar import Point, polar
 
 
 def involute_function(angle: float) -> float:

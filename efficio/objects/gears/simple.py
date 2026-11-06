@@ -1,150 +1,22 @@
-import logging
+"""Simple-tooth gears sized from their outer radius.
+
+Rectangular, trapezoidal and spherical teeth for molds, decoration and
+quick prototypes. Their teeth come from ratios of the outer radius, not from a
+gear standard. For gears that must mesh smoothly, use ``SpurGear``, which has
+involute teeth sized by module.
+"""
+
 import math
 from enum import Enum
-from typing import List, Optional, Tuple, Type  # Removed cast
+from typing import List, Optional, Tuple, Type
 
 import cadquery as cq
 
 from efficio.measures import CompoundMeasure, Measure, Millimeter
 from efficio.objects import primitives
 from efficio.objects.base import EfficioObject
+from efficio.objects.gears.base import AbstractCogwheel
 from efficio.objects.shapes import Orientation, Shape, WorkplaneShape, new_shape
-
-
-class AbstractRotaryDriver(EfficioObject):
-    _maximum_radius: Measure
-    _thickness: Measure
-
-    """Abstract base class for any rotating object that transfers motion."""
-
-    def __init__(self, maximum_radius: Measure, thickness: Measure):
-        super().__init__()
-        self._maximum_radius = maximum_radius
-        self._thickness = thickness
-
-    def get_maximum_radius(self) -> Measure:
-        return self._maximum_radius
-
-    def get_thickness(self) -> Measure:
-        return self._thickness
-
-
-class AbstractCogwheel(AbstractRotaryDriver):
-    """Represents any rotating driver that engages via teeth."""
-
-    _tooth_count: int
-
-    def __init__(self, maximum_radius: Measure, tooth_count: int, thickness: Measure):
-        super().__init__(maximum_radius, thickness)
-        self._tooth_count = tooth_count
-
-    def get_tooth_count(self) -> int:
-        return self._tooth_count
-
-
-class AbstractSprocket(AbstractCogwheel):
-    """A sprocket that engages with a chain or track instead of another gear."""
-
-    pass  # Placeholder for future functionality
-
-
-class AbstractPulley(AbstractRotaryDriver):
-    """A pulley that transfers motion via friction (e.g., belt drives)."""
-
-    pass  # Placeholder for future functionality
-
-
-class GearStandard(Enum):
-
-    def pitch_radius(self, num_teeth: int) -> float:
-        """
-        Compute the pitch radius based on whether the gear is metric (module) or imperial (DP).
-        - For metric gears: R_p = (m * N) / 2
-        - For diametral pitch gears: R_p = (N / (2 * DP))
-        """
-        if isinstance(self, MetricModule):
-            return float(self.value * num_teeth) / 2
-        elif isinstance(self, DiametralPitch):
-            return float(num_teeth / (2 * self.value))
-        else:
-            raise ValueError("Invalid gear standard type")
-
-    def addendum_radius(self, num_teeth: int) -> float:
-        pitch_radius = self.pitch_radius(num_teeth)
-        if isinstance(self, MetricModule):
-            return float(pitch_radius + self.value)
-        elif isinstance(self, DiametralPitch):
-            return float(pitch_radius + 1 / self.value)
-        else:
-            raise ValueError("Invalid gear standard type")
-
-
-# 📏 **Metric (ISO) Gear Modules**
-class MetricModule(GearStandard):
-    MODULE_0_8 = 0.8
-    MODULE_1 = 1.0
-    MODULE_1_25 = 1.25
-    MODULE_1_5 = 1.5
-    MODULE_2 = 2.0
-    MODULE_2_5 = 2.5
-    MODULE_3 = 3.0
-    MODULE_4 = 4.0
-
-    # Aliases for 3D printing
-    MODULE_FINE = MODULE_1
-    MODULE_NORMAL = MODULE_1_5
-    MODULE_LARGE = MODULE_2
-
-    @staticmethod
-    def examples() -> List[str]:
-        return [
-            "MODULE_FINE",
-            "MODULE_NORMAL",
-            "MODULE_LARGE",
-            "MODULE_1",
-            "MODULE_1_5",
-            "MODULE_2",
-        ]
-
-
-# ⚙️ **Imperial (AGMA) Diametral Pitch (DP)**
-class DiametralPitch(GearStandard):
-    PITCH_24 = 24
-    PITCH_20 = 20
-    PITCH_16 = 16
-    PITCH_14 = 14
-    PITCH_12 = 12
-    PITCH_10 = 10
-
-    # Aliases for 3D printing
-    PITCH_FINE = PITCH_20
-    PITCH_NORMAL = PITCH_16
-    PITCH_LARGE = PITCH_12
-
-    @staticmethod
-    def examples() -> List[str]:
-        return [
-            "PITCH_FINE",
-            "PITCH_NORMAL",
-            "PITCH_LARGE",
-            "PITCH_20",
-            "PITCH_16",
-            "PITCH_12",
-        ]
-
-
-class PressureAngle(Enum):
-    """
-    Pressure angle is the angle between the line of action and the line normal to the gear surface.
-    """
-
-    MODERN = 20
-    OLD = 14.5
-    HIGH_TORQUE = 25
-
-    @staticmethod
-    def examples() -> List[str]:
-        return ["MODERN", "OLD", "HIGH_TORQUE"]
 
 
 class AbstractGearTooth(EfficioObject):
@@ -370,13 +242,6 @@ class _RectangularGearTooth(AbstractTrapezoidalGearTooth):
         super().__init__(gear, 1.0)
 
 
-class _InvoluteGearTooth(AbstractGearTooth):
-    def calculate_pitch_radius(self) -> float:
-        return (
-            float(self.gear.get_maximum_radius().value()) * self.gear.pitch_radius_ratio
-        )
-
-
 class GearToothType(Enum):
     gear_tooth_class: Type[AbstractGearTooth]
     index: int
@@ -387,7 +252,7 @@ class GearToothType(Enum):
 
     RECTANGULAR = (0, _RectangularGearTooth)
     TRAPEZOIDAL = (1, _TrapezoidalGearTooth)
-    INVOLUTE = (2, _InvoluteGearTooth)
+    # Index 2 was a stub involute tooth; SpurGear is the real involute gear.
     SPHERICAL_TRAPEZOIDAL = (3, TrapezoidalSphericalGearTooth)
 
 

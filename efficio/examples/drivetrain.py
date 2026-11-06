@@ -13,7 +13,8 @@ from typing import Dict, List, Optional, Tuple
 from efficio.measures import Millimeter
 from efficio.objects.assembly import Assembly, PartSpec, PreviewPart
 from efficio.objects.base import DEFAULT_PREVIEW_COLOR, Color, EfficioObject
-from efficio.objects.gears import MetricModule, PressureAngle
+from efficio.objects.fits import Process
+from efficio.objects.planar import Span
 from efficio.objects.powertrain.axles import HexWheelAdapter, PillowBlock
 from efficio.objects.powertrain.differential import (
     SpurDifferentialCarrierHalf,
@@ -28,11 +29,9 @@ from efficio.objects.powertrain.engine import (
     Flywheel,
     Piston,
 )
-from efficio.objects.powertrain.fits import Process
 from efficio.objects.powertrain.gearbox import BearingPlate
-from efficio.objects.powertrain.gears import CrownGear, SpurGear
+from efficio.objects.powertrain.gears import DrivetrainCrownGear, DrivetrainSpurGear
 from efficio.objects.powertrain.layout import AxleStock, DrivetrainLayout, PlateSide
-from efficio.objects.powertrain.planar import Span
 from efficio.objects.powertrain.shafts import Shaft, Standoff
 from efficio.objects.powertrain.wheels import Rim, Tire
 from efficio.objects.shapes import Shape
@@ -67,14 +66,6 @@ def rod_stock(
         f"{diameter:g} mm ground steel rod",
         notes,
     )
-
-
-def _module(layout: DrivetrainLayout) -> MetricModule:
-    return MetricModule(layout.module)
-
-
-def _pressure(layout: DrivetrainLayout) -> PressureAngle:
-    return PressureAngle(layout.pressure_angle)
 
 
 # ---------------------------------------------------------------------- engine
@@ -293,9 +284,7 @@ def add_engine(
 def add_gearbox(
     assembly: Assembly, layout: DrivetrainLayout, crank_angle: float
 ) -> None:
-    module = _module(layout)
-    pressure = _pressure(layout)
-    backlash = Millimeter(layout.backlash)
+    system = layout.gear_system
     phases = layout.gear_phases(crank_angle)
     ix, iz = layout.idler_centre
     nx, nz = layout.input_centre
@@ -336,14 +325,12 @@ def add_gearbox(
     pinion_span = layout.crank_pinion_span
     pinion = PartSpec(
         "crank_pinion",
-        SpurGear(
-            module,
+        DrivetrainSpurGear(
             layout.crank_pinion_teeth,
             Millimeter(pinion_span.length),
             Millimeter(journal),
             True,
-            pressure,
-            backlash=backlash,
+            system=system,
         ),
         (PRINT, CNC),
         GEAR_MATERIAL,
@@ -362,17 +349,16 @@ def add_gearbox(
     crown_span = layout.crown_span
     crown = PartSpec(
         "crown_gear",
-        CrownGear(
-            module,
+        DrivetrainCrownGear(
             layout.crown_teeth,
             layout.crank_pinion_teeth,
             Millimeter(layout.crown_body_thickness),
             Millimeter(layout.input_shaft_diameter),
             True,
-            pressure,
             Millimeter(layout.crown_backlash),
             layout.crown_addendum,
             Millimeter(layout.crown_body_rim),
+            system,
         ),
         (PRINT,),
         GEAR_MATERIAL,
@@ -384,14 +370,12 @@ def add_gearbox(
     stage = layout.stage_plane
     input_pinion = PartSpec(
         "input_pinion",
-        SpurGear(
-            module,
+        DrivetrainSpurGear(
             layout.input_pinion_teeth,
             Millimeter(stage.length),
             Millimeter(layout.input_shaft_diameter),
             True,
-            pressure,
-            backlash=backlash,
+            system=system,
         ),
         (PRINT, CNC),
         GEAR_MATERIAL,
@@ -410,14 +394,12 @@ def add_gearbox(
 
     idler = PartSpec(
         "idler_gear",
-        SpurGear(
-            module,
+        DrivetrainSpurGear(
             layout.idler_teeth,
             Millimeter(stage.length),
             Millimeter(layout.idler_shaft_diameter),
             True,
-            pressure,
-            backlash=backlash,
+            system=system,
         ),
         (PRINT, CNC),
         GEAR_MATERIAL,

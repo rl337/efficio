@@ -1,8 +1,9 @@
 """Involute spur gears built on :class:`InvoluteGearGeometry`.
 
-``SpurGear`` is the single toothed building block: the gearbox pinions, the
-differential sun and planet gears, and the ring teeth on the differential
-carrier are all produced from it.
+``SpurGear`` is the general involute gear: module, tooth count, pressure
+angle, backlash, bore (round, D-flat or cross-pinned) and hub are all
+parameters. Specializations, such as the drivetrain's gears in
+``efficio.objects.powertrain.gears``, fix the gear system and keep the rest.
 """
 
 from typing import Optional
@@ -11,14 +12,15 @@ import cadquery as cq
 
 from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
-from efficio.objects.gears import MetricModule, PressureAngle
-from efficio.objects.powertrain.fits import (
+from efficio.objects.fits import (
     PINNED_BORE_CLEARANCE_MM,
     RUNNING_CLEARANCE_MM,
     SLIDING_CLEARANCE_MM,
 )
-from efficio.objects.powertrain.gears.involute import InvoluteGearGeometry
-from efficio.objects.powertrain.profiles import (
+from efficio.objects.gears.base import AbstractCogwheel
+from efficio.objects.gears.involute import InvoluteGearGeometry
+from efficio.objects.gears.standards import MetricModule, PressureAngle
+from efficio.objects.profiles import (
     bore_cutter,
     cross_pin_slot_cutter,
     cylinder,
@@ -39,7 +41,7 @@ def bore_allowance(d_flat: bool, pinned: bool = False) -> float:
     return PINNED_BORE_CLEARANCE_MM if pinned else RUNNING_CLEARANCE_MM
 
 
-class SpurGear(EfficioObject):
+class SpurGear(AbstractCogwheel):
     """Involute spur gear, optional plain hub, round or D-flat bore.
 
     Teeth occupy ``0 <= z <= thickness``; the hub (if any) continues to
@@ -76,6 +78,7 @@ class SpurGear(EfficioObject):
         self.backlash = backlash
         self.cross_pin_diameter = cross_pin_diameter
         self.cross_pin_length = cross_pin_length
+        super().__init__(Millimeter(self.geometry().tip_radius), teeth, thickness)
 
     @property
     def pinned(self) -> bool:

@@ -8,12 +8,7 @@ from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
 from efficio.objects.fasteners.threads import MetricThread
 from efficio.objects.powertrain.bearings import StandardBearing
-from efficio.objects.powertrain.profiles import (
-    bearing_seat_cutter,
-    cylinder,
-    prism,
-    wrap,
-)
+from efficio.objects.profiles import bearing_seat_cutter, cylinder, prism, wrap
 from efficio.objects.shapes import Shape
 
 

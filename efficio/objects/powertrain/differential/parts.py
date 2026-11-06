@@ -1,7 +1,7 @@
 """Solid parts of the spur differential.
 
-Sun and planet gears are plain :class:`SpurGear` instances sized from the
-geometry; the ring teeth on the carrier are a ``SpurGear`` blank too.
+Sun and planet gears are :class:`DrivetrainSpurGear` instances on the
+geometry's gear system; the ring teeth on the carrier are one too.
 """
 
 import math
@@ -9,15 +9,14 @@ from typing import Optional
 
 from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
-from efficio.objects.gears import MetricModule, PressureAngle
-from efficio.objects.powertrain.differential.geometry import SpurDifferentialGeometry
-from efficio.objects.powertrain.fits import (
+from efficio.objects.fits import (
     NUT_POCKET_CLEARANCE_MM,
     NUT_POCKET_DEPTH_CLEARANCE_MM,
     RUNNING_CLEARANCE_MM,
 )
-from efficio.objects.powertrain.gears.spur import SpurGear
-from efficio.objects.powertrain.profiles import cylinder, hexagon, wrap
+from efficio.objects.powertrain.differential.geometry import SpurDifferentialGeometry
+from efficio.objects.powertrain.gears import DrivetrainSpurGear
+from efficio.objects.profiles import cylinder, hexagon, wrap
 from efficio.objects.shapes import Shape
 
 
@@ -30,27 +29,25 @@ def _gear(
     hub_diameter: float = 0.0,
     hub_length: float = 0.0,
     cross_pin: bool = False,
-) -> SpurGear:
-    return SpurGear(
-        MetricModule(geometry.module),
+) -> DrivetrainSpurGear:
+    return DrivetrainSpurGear(
         teeth,
         Millimeter(thickness),
         Millimeter(bore),
         d_flat,
-        PressureAngle(geometry.pressure_angle),
         hub_diameter=Millimeter(hub_diameter),
         hub_length=Millimeter(hub_length),
-        backlash=Millimeter(geometry.backlash),
         cross_pin_diameter=Millimeter(
             geometry.axle_cross_pin_diameter if cross_pin else 0.0
         ),
         cross_pin_length=Millimeter(
             geometry.axle_cross_pin_length if cross_pin else 0.0
         ),
+        system=geometry.gear_system,
     )
 
 
-def sun_gear(geometry: SpurDifferentialGeometry) -> SpurGear:
+def sun_gear(geometry: SpurDifferentialGeometry) -> DrivetrainSpurGear:
     """Output gear on the half-shaft; its hub is the thrust spacer.
 
     D-flat bore for steel axles, or a cross-pin slot on the outer (z = 0)
@@ -68,7 +65,7 @@ def sun_gear(geometry: SpurDifferentialGeometry) -> SpurGear:
     )
 
 
-def planet_gear(geometry: SpurDifferentialGeometry) -> SpurGear:
+def planet_gear(geometry: SpurDifferentialGeometry) -> DrivetrainSpurGear:
     """Long planet running on the planet pin (a bolt shank, geometry.planet_bolt)."""
     return _gear(
         geometry,
@@ -79,7 +76,7 @@ def planet_gear(geometry: SpurDifferentialGeometry) -> SpurGear:
     )
 
 
-def ring_gear(geometry: SpurDifferentialGeometry, width: float) -> SpurGear:
+def ring_gear(geometry: SpurDifferentialGeometry, width: float) -> DrivetrainSpurGear:
     return _gear(geometry, geometry.ring_teeth, width, geometry.axle_diameter, False)
 
 
