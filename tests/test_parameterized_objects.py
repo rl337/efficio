@@ -169,7 +169,7 @@ class TestGears(unittest.TestCase):
     def test_drivetrain_gears_accept_other_system(self) -> None:
         fine = GearSystem(MetricModule.MODULE_1, PressureAngle.MODERN, 0.1)
         spur = DrivetrainSpurGear(20, Millimeter(5), Millimeter(5), system=fine)
-        crown = DrivetrainCrownGear(48, 12, Millimeter(4), Millimeter(5), system=fine)
+        crown = DrivetrainCrownGear(60, 12, Millimeter(4), Millimeter(5), system=fine)
         self.assertAlmostEqual(spur.geometry().module, 1.0)
         self.assertAlmostEqual(crown.geometry().pressure_angle_degrees, 20.0)
         self.assertEqual(crown.geometry().problems(), [])
