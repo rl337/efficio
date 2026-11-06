@@ -60,44 +60,45 @@ else
     exit 1
 fi
 
-# 4. Run unit tests
+# 4. Run unit tests (once), with coverage when pytest-cov is installed.
+#    A JUnit report goes to test-results/ so CI can summarise and upload it.
 echo "🔍 Running unit tests..."
-if poetry run pytest -v; then
+mkdir -p test-results
+pytest_args=(-v --junitxml=test-results/junit.xml)
+if poetry run python -c "import pytest_cov" 2>/dev/null; then
+    pytest_args+=(--cov=efficio --cov-report=term-missing)
+    coverage_enabled=1
+else
+    coverage_enabled=0
+fi
+if poetry run pytest "${pytest_args[@]}"; then
     print_status "Unit tests passed"
 else
     print_error "Unit tests failed"
     exit 1
 fi
-
-# 5. Test coverage (if coverage is installed)
-echo "🔍 Running test coverage..."
-if poetry run pytest --cov=efficio --cov-report=term-missing 2>/dev/null; then
-    print_status "Test coverage check passed"
-else
-    print_warning "Test coverage check failed or coverage not available"
+if [ "$coverage_enabled" = 0 ]; then
+    print_warning "pytest-cov not installed; coverage not measured"
 fi
 
-# 6. Lint with flake8 (if available)
-echo "🔍 Running flake8 linting..."
-if poetry run flake8 . 2>/dev/null; then
-    print_status "flake8 linting passed"
-else
-    print_warning "flake8 not available, skipping"
-fi
-
-# 7. Security check with bandit (if available)
-echo "🔍 Running security check..."
-if command -v poetry run bandit &> /dev/null; then
-    if poetry run bandit -r efficio/; then
-        print_status "Security check passed"
-    else
-        print_warning "Security check found issues"
+# 5. Optional tools: run them only if installed, and say so plainly if not.
+run_optional() {
+    local tool="$1"; shift
+    if ! poetry run python -c "import $tool" 2>/dev/null; then
+        print_warning "$tool not installed, skipping"
+        return
     fi
-else
-    print_warning "bandit not available, skipping security check"
-fi
+    echo "🔍 Running $tool..."
+    if poetry run "$@"; then
+        print_status "$tool passed"
+    else
+        print_warning "$tool reported issues"
+    fi
+}
+run_optional flake8 flake8 .
+run_optional bandit bandit -q -r efficio/
 
-# 8. Check for common Python issues
+# 6. Check for common Python issues
 echo "🔍 Running additional Python checks..."
 
 # Check for TODO/FIXME comments
