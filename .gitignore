@@ -74,3 +74,6 @@ poetry.lock
 .dmypy.json
 dmypy.json
 previews/
+
+# CI test reports
+/test-results/
