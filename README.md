@@ -272,6 +272,34 @@ contains only the modeled crank pinion: no unmodeled retention is invented.
 Grouping is for editorial review, not proof of fit, assembly sequence or build
 readiness. Part-specific colors (for example tire rubber) override group colors.
 
+### Larger open toy-engine proposal
+
+`efficio.examples.open_engine.demonstration_layout()` supplies the editable
+review configuration: four inline cylinders, 30 mm bore, 26 mm stroke, 52 mm
+rods and 40 mm cylinder pitch. Pass it to `rear_transaxle()` or `engine_assembly()`.
+The standard drivetrain defaults remain available for comparison. This toy
+proposal uses `EngineGeometry.windowed_block=True` for through-side windows
+and open head apertures; it is not a combustion engine.
+
+The 18 mm-wide windows leave fore/aft bore arcs for piston guidance. End walls,
+bearing seats, split-face/deck/base rails (4 mm) and side-mount bridges (8 mm)
+remain. These dimensions and the opening-width fraction are editable parameters.
+`problems()` checks their geometric limits and the existing mechanism clearances.
+Tests compare support-region material against the enclosed version, check solid
+connectivity and test discrete crank poses. They do not validate stiffness,
+fatigue, guide wear, piston tilting, manufacturing tolerances or assembly under load.
+
+```bash
+PYTHONPATH=. poetry run python scripts/render_open_engine.py --output-dir previews/open-engine
+```
+
+The boards and JSON measure actual CAD geometry. The initial proposal removes
+21.6% of housing solid volume versus the same enlarged engine with closed walls,
+but remains 30.5% above the smaller original housing because its bore, stroke and
+length increased. This is a first lightening proposal, not a minimum-material
+optimization. CAD volume is not slicer filament usage. Review printed guides and
+frame stiffness before choosing more aggressive openings or thinner members.
+
 ### Mold inspection and cutaways
 
 Generate geometry-derived example reports with the supported isolated environment:
