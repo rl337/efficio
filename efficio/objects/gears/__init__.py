@@ -28,6 +28,12 @@ from efficio.objects.gears.involute import (
     involute_function,
     mesh_phase,
 )
+from efficio.objects.gears.markings import (
+    GearArcMarking,
+    GearFaceMarker,
+    GearMarkingStyle,
+    standard_involute_markings,
+)
 from efficio.objects.gears.simple import (
     AbstractGear,
     AbstractGearTooth,
@@ -68,6 +74,9 @@ __all__ = [
     "DEFAULT_BACKLASH",
     "DiametralPitch",
     "FaceGearGeometry",
+    "GearArcMarking",
+    "GearFaceMarker",
+    "GearMarkingStyle",
     "GearStandard",
     "GearSystem",
     "GearToothType",
@@ -85,4 +94,5 @@ __all__ = [
     "crown_mesh_phase",
     "involute_function",
     "mesh_phase",
+    "standard_involute_markings",
 ]

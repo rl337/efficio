@@ -135,9 +135,62 @@ This writes `parts/*.stl`, `cnc/*.dxf` mid-height profiles for the CNC-capable
 plate parts, `BOM.md` / `bom.csv` (with bearings, fasteners and rod-stock cut
 lengths), and `assembly.stl`.
 
+
+### Reusable involute reference
+
+`InvoluteGearGeometry` is the single source of involute math. Its
+`flank_point(radius, side)`, `tooth_outline()` and `outline()` methods are
+CadQuery-free; the single-tooth profile can be reused without fixing a sweep
+path. Root extensions are radial segments, not generated cutter fillets.
+Helical, herringbone and conjugate spherical paths are not implemented here.
+
+`SpurGear` accepts a `MetricModule` catalogue value or a positive numeric module.
+`SpurGear.from_tip_radius(...)` preserves the historical outside-radius convention
+without introducing a second gear implementation:
+
+```python
+from efficio.measures import Millimeter
+from efficio.objects.gears import SpurGear
+
+reference = SpurGear.from_tip_radius(
+    radius=Millimeter(30), teeth=20, thickness=Millimeter(8),
+    lightening_holes=6, engrave_identity=True,
+)
+```
+
+The factory defaults to 20 degrees and zero backlash. The example derives module
+30/11; it does not round the geometry to the `M2.727` engraved display value.
+Ordinary `SpurGear` and drivetrain constructors retain their previous defaults.
+Lightening and engraving default **off**, so existing drivetrain solids do not
+change. A zero bore means an undrilled centre.
+
+Optional holes maintain `minimum_web` at the centre, between holes and inside the
+actual sampled root boundary. The same identity ring is reserved with engraving
+on or off, so toggling markings does not resize holes. Engraving uses complete glyph-stroke envelopes,
+including dots and corners, stays clear of holes and hubs, and leaves at least
+`minimum_web` beneath the cut. Small gears skip features that cannot fit;
+cross-pinned gears skip both optional features to protect the drive slot.
+Inspect `lightening_hole_layout()` and `identity_markings()` to see what will be
+cut. `GearMarkingStyle` controls stroke width, depth and text heights in Python.
+These conservative geometric checks are not material-specific load or printing
+qualification.
+
+The CLI accepts either `--params module=MODULE_1_5` or a numeric module. The
+reference can be rendered and exported from its actual geometry:
+
+```sh
+python -m efficio --object SpurGear \
+  --params module=2.727272727272727 --params teeth=20 \
+  --params thickness=8mm --params bore=0mm --params d_flat=false \
+  --params pressure_angle=MODERN --params backlash=0mm \
+  --params lightening_holes=6 --params engrave_identity=true \
+  --png reference.png --stl reference.stl
+```
+
 ## Development
 
-This project uses Poetry for dependency management and Docker for development environment isolation.
+This project uses Poetry for dependency management. Docker is the reference
+development and CI environment; a locked virtual environment is also supported.
 
 ```bash
 # Build Docker image
@@ -146,3 +199,44 @@ docker build -t efficio .
 # Run in Docker container
 docker run -it -v $(pwd):/app efficio
 ```
+
+### Non-Docker agent development
+
+Python 3.12 and a local virtual environment are supported on agent VMs without
+Docker. The bootstrap uses the same checked-in `poetry.lock` as Docker, including
+development dependencies, and installs Efficio editable. Poetry 2.0.1 is installed
+in a temporary tool venv and removed afterward; global Python is not modified.
+
+```bash
+./scripts/setup_venv.sh
+EFFICIO_CHECK_ENV=venv ./run_checks.sh
+.venv/bin/python -m efficio --help
+# Optional for interactive work:
+source .venv/bin/activate
+```
+
+Set `PYTHON=/path/to/python3.12` if it is not on PATH. The script can be rerun
+without relocking. It requires package-index access and Python's `venv`/pip
+support. Keep `.venv` out of version control (already ignored).
+
+A virtual environment does not supply native libraries. On Debian/Ubuntu, common
+headless prerequisites are `python3.12-venv`, `build-essential`, `pkg-config`,
+`libcairo2-dev`, `libgl1`, and `libglu1-mesa`; the Dockerfile is the reference for
+the full system-library set. Have the VM administrator provide missing packages
+through the OS package manager. Other OSes may require equivalent libraries or
+may not have wheels for the locked CAD packages. Setup finishes with real CAD
+solid and Cairo-backed PNG smoke checks to expose missing libraries early.
+
+`run_checks.sh` uses `.venv` if present, otherwise Poetry. Set
+`EFFICIO_CHECK_ENV=docker` to force the existing Poetry path in a container,
+especially if a host `.venv` is mounted at `/app/.venv` (host venvs are not portable
+into containers). The Docker image sets this explicitly, and `.dockerignore` excludes the host
+venv from image builds. CI continues to use Docker. The venv runs the same MyPy, Black,
+isort and pytest checks; optional tools still run only when installed. Passing
+these checks is not a claim of Docker CI, visual CAD inspection or printability.
+
+The shared Black check omits `--diff` so it does not require a multiprocessing
+manager socket on restricted VMs; formatting enforcement is unchanged. If the VM
+has a read-only home directory, optional runtime cache warnings do not imply
+failed checks. Bootstrap keeps its Poetry cache/config in the temporary tool directory;
+set `POETRY_CACHE_DIR` to a writable persistent cache to reuse downloads.

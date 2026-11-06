@@ -27,15 +27,40 @@ print_error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
-# Check if we're in a Docker container
-if [ ! -f /.dockerenv ]; then
-    print_warning "Not running in Docker container. AGENTS.md requires Docker for development."
-    print_warning "Consider running: docker build -t efficio . && docker run -it -v \$(pwd):/app efficio"
-fi
+# Resolve paths independently of the caller's working directory. Prefer the
+# project venv when present; Docker uses its existing Poetry installation.
+cd "$(dirname "${BASH_SOURCE[0]}")"
+case "${EFFICIO_CHECK_ENV:-auto}" in
+    auto)
+        if [ -x .venv/bin/python ]; then
+            runner=("$PWD/.venv/bin/python" -m)
+        else
+            runner=(poetry run)
+        fi
+        ;;
+    venv)
+        if [ ! -x .venv/bin/python ]; then
+            print_error "Missing .venv. Run ./scripts/setup_venv.sh first."
+            exit 1
+        fi
+        runner=("$PWD/.venv/bin/python" -m)
+        ;;
+    docker) runner=(poetry run) ;;
+    *) print_error "EFFICIO_CHECK_ENV must be auto, venv, or docker"; exit 1 ;;
+esac
+
+# Python itself takes -c, while tools run as modules in the venv.
+run_python() {
+    if [ "${runner[1]}" = "-m" ]; then
+        "${runner[0]}" "$@"
+    else
+        "${runner[@]}" python "$@"
+    fi
+}
 
 # 1. Type checking with MyPy
 echo "🔍 Running MyPy type checking..."
-if poetry run mypy .; then
+if "${runner[@]}" mypy .; then
     print_status "MyPy type checking passed"
 else
     print_error "MyPy type checking failed"
@@ -44,19 +69,19 @@ fi
 
 # 2. Code formatting with Black
 echo "🔍 Running Black code formatting check..."
-if poetry run black --check --diff .; then
+if "${runner[@]}" black --check .; then
     print_status "Black formatting check passed"
 else
-    print_error "Black formatting check failed. Run 'poetry run black .' to fix formatting issues"
+    print_error "Black formatting check failed. Run Black in the selected development environment to fix formatting issues"
     exit 1
 fi
 
 # 3. Import sorting with isort
 echo "🔍 Running isort import sorting check..."
-if poetry run isort --check-only .; then
+if "${runner[@]}" isort --check-only .; then
     print_status "isort import sorting check passed"
 else
-    print_error "isort import sorting check failed. Run 'poetry run isort .' to fix import issues"
+    print_error "isort import sorting check failed. Run isort in the selected development environment to fix import issues"
     exit 1
 fi
 
@@ -65,13 +90,13 @@ fi
 echo "🔍 Running unit tests..."
 mkdir -p test-results
 pytest_args=(-v --junitxml=test-results/junit.xml)
-if poetry run python -c "import pytest_cov" 2>/dev/null; then
+if run_python -c "import pytest_cov" 2>/dev/null; then
     pytest_args+=(--cov=efficio --cov-report=term-missing)
     coverage_enabled=1
 else
     coverage_enabled=0
 fi
-if poetry run pytest "${pytest_args[@]}"; then
+if "${runner[@]}" pytest "${pytest_args[@]}"; then
     print_status "Unit tests passed"
 else
     print_error "Unit tests failed"
@@ -84,12 +109,12 @@ fi
 # 5. Optional tools: run them only if installed, and say so plainly if not.
 run_optional() {
     local tool="$1"; shift
-    if ! poetry run python -c "import $tool" 2>/dev/null; then
+    if ! run_python -c "import $tool" 2>/dev/null; then
         print_warning "$tool not installed, skipping"
         return
     fi
     echo "🔍 Running $tool..."
-    if poetry run "$@"; then
+    if "${runner[@]}" "$@"; then
         print_status "$tool passed"
     else
         print_warning "$tool reported issues"

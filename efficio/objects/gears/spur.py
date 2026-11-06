@@ -6,7 +6,8 @@ parameters. Specializations, such as the drivetrain's gears in
 ``efficio.objects.powertrain.gears``, fix the gear system and keep the rest.
 """
 
-from typing import Optional
+import math
+from typing import List, Optional, Tuple, Union
 
 import cadquery as cq
 
@@ -19,6 +20,12 @@ from efficio.objects.fits import (
 )
 from efficio.objects.gears.base import AbstractCogwheel
 from efficio.objects.gears.involute import InvoluteGearGeometry
+from efficio.objects.gears.markings import (
+    GearArcMarking,
+    GearFaceMarker,
+    GearMarkingStyle,
+    standard_involute_markings,
+)
 from efficio.objects.gears.standards import MetricModule, PressureAngle
 from efficio.objects.profiles import (
     bore_cutter,
@@ -53,7 +60,7 @@ class SpurGear(AbstractCogwheel):
 
     def __init__(
         self,
-        module: MetricModule,
+        module: Union[MetricModule, float],
         teeth: int,
         thickness: Measure,
         bore: Measure,
@@ -64,9 +71,36 @@ class SpurGear(AbstractCogwheel):
         backlash: Measure = DEFAULT_BACKLASH,
         cross_pin_diameter: Measure = NO_HUB,
         cross_pin_length: Measure = NO_HUB,
+        lightening_holes: int = 0,
+        minimum_web: Measure = Millimeter(3.0),
+        engrave_identity: bool = False,
+        marking_style: GearMarkingStyle = GearMarkingStyle(),
+        marking_clearance: Measure = Millimeter(0.2),
     ):
         if cross_pin_diameter.value() > 0 and d_flat:
             raise ValueError("choose either a D-flat or a cross-pin drive")
+        if not math.isfinite(thickness.value()) or thickness.value() <= 0:
+            raise ValueError("Gear thickness must be finite and positive")
+        if not math.isfinite(bore.value()) or bore.value() < 0:
+            raise ValueError("Bore must be finite and non-negative")
+        if (
+            isinstance(lightening_holes, bool)
+            or not isinstance(lightening_holes, int)
+            or (lightening_holes != 0 and lightening_holes < 3)
+        ):
+            raise ValueError("Choose zero or at least three lightening holes")
+        if not math.isfinite(minimum_web.value()) or minimum_web.value() <= 0:
+            raise ValueError("Minimum web must be finite and positive")
+        if (
+            not math.isfinite(marking_clearance.value())
+            or marking_clearance.value() <= 0
+        ):
+            raise ValueError("Marking clearance must be finite and positive")
+        self.lightening_holes = lightening_holes
+        self.minimum_web = minimum_web
+        self.engrave_identity = engrave_identity
+        self.marking_style = marking_style
+        self.marking_clearance = marking_clearance
         self.module = module
         self.teeth = teeth
         self.thickness = thickness
@@ -80,13 +114,56 @@ class SpurGear(AbstractCogwheel):
         self.cross_pin_length = cross_pin_length
         super().__init__(Millimeter(self.geometry().tip_radius), teeth, thickness)
 
+    @classmethod
+    def from_tip_radius(
+        cls,
+        radius: Measure,
+        teeth: int,
+        thickness: Measure,
+        bore: Measure = NO_HUB,
+        d_flat: bool = False,
+        pressure_angle: PressureAngle = PressureAngle.MODERN,
+        backlash: Measure = Millimeter(0.0),
+        lightening_holes: int = 0,
+        minimum_web: Measure = Millimeter(3.0),
+        engrave_identity: bool = False,
+        marking_style: GearMarkingStyle = GearMarkingStyle(),
+        marking_clearance: Measure = Millimeter(0.2),
+    ) -> "SpurGear":
+        """Outside-radius reference construction using the same spur implementation.
+
+        The reference convention is 20 degrees and zero backlash; ordinary
+        construction and drivetrain specializations keep their existing defaults.
+        """
+        geometry = InvoluteGearGeometry.from_tip_radius(
+            radius.value(), teeth, float(pressure_angle.value), backlash.value()
+        )
+        return SpurGear(
+            geometry.module,
+            teeth,
+            thickness,
+            bore,
+            d_flat,
+            pressure_angle,
+            backlash=backlash,
+            lightening_holes=lightening_holes,
+            minimum_web=minimum_web,
+            engrave_identity=engrave_identity,
+            marking_style=marking_style,
+            marking_clearance=marking_clearance,
+        )
+
     @property
     def pinned(self) -> bool:
         return self.cross_pin_diameter.value() > 0
 
     def geometry(self) -> InvoluteGearGeometry:
         return InvoluteGearGeometry(
-            module=float(self.module.value),
+            module=float(
+                self.module.value
+                if isinstance(self.module, MetricModule)
+                else self.module
+            ),
             teeth=self.teeth,
             pressure_angle_degrees=float(self.pressure_angle.value),
             backlash=self.backlash.value(),
@@ -127,8 +204,143 @@ class SpurGear(AbstractCogwheel):
             )
         return cutter
 
+    def _proposed_markings(self) -> List[GearArcMarking]:
+        style = self.marking_style
+        if self.thickness.value() <= style.depth:
+            return []
+        profile = self.geometry()
+        marker = GearFaceMarker(self.thickness.value(), style)
+        limit = profile.material_disc_radius() - self.marking_clearance.value()
+
+        def markings_at(radius: float) -> List[GearArcMarking]:
+            return standard_involute_markings(
+                self.teeth,
+                profile.module,
+                float(self.pressure_angle.value),
+                radius,
+                style,
+            )
+
+        # Include dot overshoot and tangential stroke corners, not merely glyph
+        # height. Choose the outermost safe ring from the actual cutter bounds.
+        low, high = 1e-9, limit
+        if (
+            high <= low
+            or max(marker.radial_bounds(m)[1] for m in markings_at(low)) > limit
+        ):
+            return []
+        for _ in range(40):
+            radius = (low + high) / 2
+            if (
+                max(marker.radial_bounds(m)[1] for m in markings_at(radius))
+                <= limit - 1e-8
+            ):
+                low = radius
+            else:
+                high = radius
+        return markings_at(low)
+
+    def _central_material_radius(self) -> float:
+        bore_radius = (
+            self.bore.value() / 2 + bore_allowance(self.d_flat, self.pinned)
+            if self.bore.value() > 0
+            else 0.0
+        )
+        return max(
+            bore_radius, self.hub_diameter.value() / 2 if self.has_hub() else 0.0
+        )
+
+    def lightening_hole_layout(self) -> List[Tuple[float, float, float]]:
+        """Actual (x, y, radius) cutter envelopes, or none when too small.
+
+        Preserve webs at the root, centre, between neighbouring holes and
+        underneath the optional identity ring. Cross-pin gears opt out because
+        their drive slots need their own load-bearing envelope.
+        """
+        if not self.lightening_holes or self.pinned:
+            return []
+        profile = self.geometry()
+        web = self.minimum_web.value()
+        hub = max(
+            self._central_material_radius(),
+            2 * profile.module,
+            profile.root_radius * 0.24,
+        )
+        inner, outer = hub + web, profile.material_disc_radius() - web
+        # Reserve the same identity ring with engraving on or off, so toggling
+        # identification never silently changes the load-bearing hole layout.
+        if self.thickness.value() > self.marking_style.depth:
+            marker = GearFaceMarker(self.thickness.value(), self.marking_style)
+            markings = self._proposed_markings()
+            if markings:
+                outer = min(
+                    outer,
+                    min(marker.radial_bounds(m)[0] for m in markings)
+                    - self.marking_clearance.value(),
+                )
+        if outer <= inner:
+            return []
+        centre = (inner + outer) / 2
+        radius = min(
+            (outer - inner) / 2,
+            centre * math.sin(math.pi / self.lightening_holes) - web / 2,
+        )
+        if radius < web / 2:
+            return []
+        return [
+            (
+                centre * math.cos(2 * math.pi * i / self.lightening_holes),
+                centre * math.sin(2 * math.pi * i / self.lightening_holes),
+                radius,
+            )
+            for i in range(self.lightening_holes)
+        ]
+
+    def identity_markings(self) -> List[GearArcMarking]:
+        """Safe automatic markings, or none when the face cannot accommodate them."""
+        if not self.engrave_identity or self.pinned:
+            return []
+        style = self.marking_style
+        clearance = self.marking_clearance.value()
+        if self.thickness.value() < style.depth + max(
+            clearance, self.minimum_web.value()
+        ):
+            return []
+        marker = GearFaceMarker(self.thickness.value(), style)
+        inner_material = self._central_material_radius()
+        for x, y, radius in self.lightening_hole_layout():
+            inner_material = max(inner_material, math.hypot(x, y) + radius)
+        markings = self._proposed_markings()
+        for marking in markings:
+            inner, outer = marker.radial_bounds(marking)
+            if (
+                inner < inner_material + clearance - 1e-8
+                or outer > self.geometry().material_disc_radius() - clearance
+            ):
+                return []
+            # Ensure neighbouring glyph envelopes cannot merge into one slot.
+            if len(marking.text) > 1:
+                step = math.radians(marking.span_degrees / (len(marking.text) - 1))
+                if (
+                    2 * inner * math.sin(step / 2)
+                    < marking.height * 0.6 + style.stroke_width + clearance
+                ):
+                    return []
+        return markings
+
     def shape(self) -> Optional[Shape]:
-        return wrap(self.blank().cut(self.bore_cutter(-1.0, self.length + 1.0)))
+        body = self.blank()
+        if self.bore.value() > 0 or self.pinned:
+            body = body.cut(self.bore_cutter(-1.0, self.length + 1.0))
+        for x, y, radius in self.lightening_hole_layout():
+            body = body.cut(cylinder(radius, -1.0, self.length + 1.0, x, y))
+        shape = wrap(body)
+        markings = self.identity_markings()
+        if markings:
+            marker = GearFaceMarker(self.thickness.value(), self.marking_style)
+            for marking in markings:
+                shape = marker.cut_arc(shape, marking)
+        return shape
 
 
 class CompoundSpurGear(EfficioObject):
@@ -136,7 +348,7 @@ class CompoundSpurGear(EfficioObject):
 
     def __init__(
         self,
-        module: MetricModule,
+        module: Union[MetricModule, float],
         pinion_teeth: int,
         pinion_thickness: Measure,
         gear_teeth: int,
