@@ -73,3 +73,6 @@ poetry.lock
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# CI test reports
+/test-results/
