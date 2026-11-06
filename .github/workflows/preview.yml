@@ -1,0 +1,42 @@
+name: Preview renders
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build Docker image
+        run: docker build -t efficio .
+      - name: Render drivetrain and sub-assemblies with the efficio CLI
+        run: |
+          mkdir -p previews
+          render() {
+            docker run -v ${{ github.workspace }}:/app efficio \
+              poetry run python -m efficio --object RearTransaxle \
+              --params crank_angle=30 "$@"
+          }
+          render --png /app/previews/rear_transaxle.png
+          for section in ENGINE GEARBOX DIFFERENTIAL AXLES WHEELS; do
+            render --params section=$section \
+              --png /app/previews/rear_transaxle_${section,,}.png
+          done
+          render --params axle_stock=WOOD_DOWEL \
+            --png /app/previews/rear_transaxle_dowel_axles.png
+      - uses: actions/upload-artifact@v6
+        with:
+          name: previews
+          path: previews/*.png
+      - name: Echo previews into the log (for clients without artifact access)
+        run: |
+          for f in previews/*.png; do
+            echo "::group::base64 $f"
+            echo "BEGIN-PREVIEW $f"
+            base64 -w 120 "$f"
+            echo "END-PREVIEW $f"
+            echo "::endgroup::"
+          done

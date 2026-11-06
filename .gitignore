@@ -15,7 +15,7 @@ lib64/
 parts/
 sdist/
 var/
-wheels/
+/wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -73,6 +73,7 @@ poetry.lock
 .mypy_cache/
 .dmypy.json
 dmypy.json
+previews/
 
 # CI test reports
 /test-results/

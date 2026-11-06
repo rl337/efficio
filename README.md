@@ -35,6 +35,87 @@ gear = RectangularGear(teeth=20, module=2)
 box.export_stl("box.stl")
 ```
 
+## Drivetrain, engine, wheels and axles
+
+`efficio.examples.drivetrain.rear_transaxle()` lays out and models every
+fabricated part of a small-vehicle rear transaxle. All shafts are parallel, so
+the whole power path uses spur gears:
+
+```
+twin-cylinder engine crank -> 12T pinion -> 36T|12T compound idler
+  -> 46T ring gear on spur differential -> 12T suns -> D-flat half-shafts
+  -> 12 mm hex adapters -> 110 mm wheels            (overall 11.5 : 1)
+```
+
+| Group | Parts | Process |
+| --- | --- | --- |
+| Engine | split block (upper / lower), cylinder head, pistons, connecting rods, crank webs, flywheel, journals, crankpins, wrist pins | block and pistons FDM; head, rods, webs and flywheel 2.5D CNC plate or FDM; pins and journals rod stock |
+| Gearbox | left / right side plates with bearing seats, standoffs, crank pinion, compound idler, idler shaft | plates CNC plate or FDM; gears FDM (pinion also CNC) |
+| Differential | two carrier halves carrying the ring teeth, two sun gears, four long planets on M3 bolt pins | FDM (planets also CNC) |
+| Axles and wheels | half-shafts, pillow blocks, hex wheel adapters, spoked rims, TPU tyres | half-shafts rod stock; rest FDM |
+
+Gears are involute (module 1.5, 25° pressure angle, so 12-tooth pinions do not
+undercut) with per-tooth backlash for printed parts.
+
+### Package layout
+
+Parts live in `efficio.objects.powertrain`, grouped by function. Each one takes
+its own dimensions, so it can be reused outside this build:
+
+| Module | Contents |
+| --- | --- |
+| `gears` | `InvoluteGearGeometry` (pure), `SpurGear` (optional hub, round or D bore), `CompoundSpurGear` |
+| `engine` | `EngineGeometry` (pure: any cylinder count, bore or stroke, derived bolt patterns, kinematics, rod-sweep check), `EngineBlockHalf`, `CylinderHead`, `CrankWeb`, `ConnectingRod`, `Piston`, `Flywheel` |
+| `gearbox` | `BearingPlate`, built from any list of `PlateSeat` / `PlateHole` |
+| `differential` | `SpurDifferentialGeometry` (pure), `SpurDifferentialCarrierHalf`, and `sun_gear` / `planet_gear` / `ring_gear`, which are `SpurGear`s |
+| `axles` | `PillowBlock` (any `StandardBearing`), `HexWheelAdapter` |
+| `wheels` | `Rim`, `Tire` |
+| shared | `shafts` (`Shaft`, `Standoff`), `bearings`, `fits`, `profiles` (CadQuery helpers), `planar` (pure 2D) |
+| `layout` | `DrivetrainLayout`: composes the engine and differential geometry, works out shaft centres from pitch radii, sets gear rotations so teeth mesh, and checks clearances |
+
+Axles can be ground steel rod (D-flat drive, tapped end) or **hardwood
+dowel** from the hardware store: `DrivetrainLayout.with_dowel_axles()` defaults
+to a 1/4" Waddell dowel (Ace item 5980552). Wood can't hold a D-flat, so
+the sun gears and wheel hex adapters are driven by a 2 mm cross pin through the
+dowel, seated in a slot. The dowel runs through the wheel hub, and a wood screw
+in its end grain holds the wheel on. The carrier hub moves to a 6801 bearing,
+and the pillow blocks take inch-series R4 bearings. `powertrain.dowels` lists
+the Waddell sizes from 1/8" to 1".
+
+Engine parts have `from_engine(EngineGeometry)` factories. Change the layout
+(for example `DrivetrainLayout(engine=EngineGeometry(cylinders=3))`) and every
+dependent part, plate hole and shaft length follows. The assembled solids are
+checked pair by pair for interference, and the engine is checked across a crank
+sweep.
+
+The engine is a kinematic model. It has no valves or ignition, so it is
+turned through the gearbox or by hand/motor on the flywheel stub.
+
+### Sub-assemblies and colour previews
+
+The transaxle is built as nested `Assembly` objects named after the real car
+parts: **Engine**, **Gearbox**, **Differential**, **Axles** and **Wheels**.
+Each can be built (`gearbox_assembly(layout)`), checked and rendered on its
+own, or as part of the whole.
+
+Every `EfficioObject` has an optional `preview_color`. An object without one
+inherits its parent's colour; an object with no parent uses the renderer's
+current colour (`--color`). Only the sub-assemblies pick colours. Parts
+override them only where the material matters, like black tyres and wood
+dowels. Previews are shaded colour views (top, front, left side, isometric)
+with +Z up and a legend of the sub-assemblies. `--line-art` gives the old
+hidden-line drawing.
+
+```bash
+python -m efficio.examples.drivetrain out/drivetrain
+python -m efficio --object RearTransaxle --params section=GEARBOX --png gearbox.png
+python -m efficio --object RearTransaxle --params crank_angle=30 --png rear_transaxle.png
+```
+
+This writes `parts/*.stl`, `cnc/*.dxf` mid-height profiles for the CNC-capable
+plate parts, `BOM.md` / `bom.csv` (with bearings, fasteners and rod-stock cut
+lengths), and `assembly.stl`.
+
 ## Development
 
 This project uses Poetry for dependency management and Docker for development environment isolation.

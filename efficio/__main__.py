@@ -36,6 +36,9 @@ def find_subclasses_in_directory(
                 spec = importlib.util.spec_from_file_location(module_name, file_path)
                 if spec and spec.loader:
                     module = importlib.util.module_from_spec(spec)
+                    # Register before executing (importlib's recipe) so that
+                    # dataclasses with forward references can resolve them.
+                    sys.modules[module_name] = module
                     spec.loader.exec_module(module)
 
                     for name, obj in inspect.getmembers(module, inspect.isclass):
@@ -55,9 +58,35 @@ def get_constructor_params(cls: Type[Any]) -> Dict[str, Tuple[str, type]]:
         if name == "self":
             continue  # Skip the 'self' parameter
         param_type = type_hints.get(name, Any)
-        params[name] = (param_type.__name__, param_type)
+        type_name = getattr(param_type, "__name__", str(param_type))
+        params[name] = (type_name, param_type)
 
     return params
+
+
+def get_constructor_defaults(cls: Type[Any]) -> Dict[str, Any]:
+    """Constructor parameters that may be omitted on the command line."""
+    sig = inspect.signature(cls.__init__)
+    return {
+        name: param.default
+        for name, param in sig.parameters.items()
+        if name != "self" and param.default is not inspect.Parameter.empty
+    }
+
+
+def parse_color(value: str) -> Tuple[int, int, int]:
+    """'#rrggbb', 'rrggbb' or 'r,g,b'."""
+    text = value.strip()
+    if "," in text:
+        parts = [int(p) for p in text.split(",")]
+    else:
+        text = text.lstrip("#")
+        if len(text) != 6:
+            raise ValueError(f"Invalid colour: '{value}'")
+        parts = [int(text[i : i + 2], 16) for i in (0, 2, 4)]
+    if len(parts) != 3 or not all(0 <= p <= 255 for p in parts):
+        raise ValueError(f"Invalid colour: '{value}'")
+    return (parts[0], parts[1], parts[2])
 
 
 def fetch_object_data() -> Dict[Type[Any], Dict[str, Tuple[str, type]]]:
@@ -126,6 +155,8 @@ def main(
     obj_params: Optional[List[Tuple[str, str]]],
     png_file: Optional[str],
     stl_file: Optional[str],
+    color: Optional[str] = None,
+    line_art: bool = False,
 ) -> None:
     options = fetch_object_data()
 
@@ -140,10 +171,13 @@ def main(
     obj_param_dict = {x[0]: x[1] for x in obj_params}
 
     option_params = options[obj_class]
+    defaults = get_constructor_defaults(obj_class)
     kwargs: Dict[str, Any] = {}
     for option_name in option_params:
         option_type_str, option_type = option_params[option_name]
         if option_name not in obj_param_dict:
+            if option_name in defaults:
+                continue
             print_valid_classes(f"{option_name} is required for {obj_name}", options)
             sys.exit(3)
         option_value = obj_param_dict[option_name]
@@ -177,7 +211,11 @@ def main(
         sys.exit(4)
 
     if png_file:
-        image = efficio.renderer.create_composite_image(shape.workplane())
+        if line_art:
+            image = efficio.renderer.create_composite_image(shape.workplane())
+        else:
+            current = parse_color(color) if color else efficio.DEFAULT_PREVIEW_COLOR
+            image = efficio.renderer.create_object_preview(instance, current)
         image.save(png_file, "PNG")
 
     if stl_file:
@@ -219,6 +257,16 @@ if __name__ == "__main__":
     )
     parser.add_argument("--png", type=str, help="Write as a PNG to this file.")
     parser.add_argument("--stl", type=str, help="Write as an STL to this file.")
+    parser.add_argument(
+        "--color",
+        type=str,
+        help="Current preview colour (#rrggbb or r,g,b) for uncoloured objects.",
+    )
+    parser.add_argument(
+        "--line-art",
+        action="store_true",
+        help="Render the monochrome hidden-line preview instead of colour.",
+    )
 
     args = parser.parse_args()
-    main(args.object, args.params, args.png, args.stl)
+    main(args.object, args.params, args.png, args.stl, args.color, args.line_art)
