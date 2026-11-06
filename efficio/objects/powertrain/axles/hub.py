@@ -6,11 +6,8 @@ import cadquery as cq
 
 from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
-from efficio.objects.powertrain.fits import (
-    PINNED_BORE_CLEARANCE_MM,
-    SLIDING_CLEARANCE_MM,
-)
-from efficio.objects.powertrain.profiles import (
+from efficio.objects.fits import PINNED_BORE_CLEARANCE_MM, SLIDING_CLEARANCE_MM
+from efficio.objects.profiles import (
     bore_cutter,
     cross_pin_slot_cutter,
     hex_across_corners,

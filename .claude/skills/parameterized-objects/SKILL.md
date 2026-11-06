@@ -32,7 +32,8 @@ The M3 bolt illustrates the rule:
   is actually used, never as a module-level object in the fastener module.
 
 Apply the same reasoning everywhere. A `SpurGear` is generic; a module-1.5,
-25° pressure-angle gear is a choice of standard values; "the 12-tooth crank
+25° pressure-angle gear is a choice of standard values (`DrivetrainSpurGear`
+fixes `DRIVETRAIN_GEAR_SYSTEM`); "the 12-tooth crank
 pinion" exists only in the transaxle builder.
 
 ## Rules
@@ -56,8 +57,12 @@ pinion" exists only in the transaxle builder.
    not.
 4. **Put each object in a categorized submodule.** Choose the package by what
    the object *is*, not by the first project that needs it:
-   - powertrain parts: `efficio/objects/powertrain/{gears,engine,gearbox,differential,axles,wheels}`
-   - shared powertrain building blocks: `powertrain/{shafts,bearings,fits,profiles,planar}`
+   - general gears: `efficio/objects/gears/` (standards, involute geometry,
+     `SpurGear`, `CrownGear`, simple gears). Gears fixed to one project's gear
+     system go in that project, e.g. `powertrain/gears` (`DrivetrainSpurGear`)
+   - general helpers: `efficio/objects/{fits,profiles,planar}.py`
+   - powertrain parts: `efficio/objects/powertrain/{engine,gearbox,differential,axles,wheels}`
+   - shared powertrain building blocks: `powertrain/{shafts,bearings,dowels}`
    - fasteners, enclosures, molds and so on: a package for that category (for
      example `efficio/objects/fasteners/` for bolts, nuts and inserts)
 

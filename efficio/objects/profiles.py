@@ -8,9 +8,9 @@ from typing import List, Sequence
 
 import cadquery as cq
 
+from efficio.objects.fits import CROSS_PIN_SLOT_CLEARANCE_MM
+from efficio.objects.planar import Point
 from efficio.objects.powertrain.bearings import BallBearing
-from efficio.objects.powertrain.fits import CROSS_PIN_SLOT_CLEARANCE_MM
-from efficio.objects.powertrain.planar import Point
 from efficio.objects.shapes import Orientation, Shape, WorkplaneShape
 
 

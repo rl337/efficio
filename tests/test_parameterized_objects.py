@@ -17,10 +17,23 @@ from efficio.objects.fasteners import (
     M3HexNut,
     MetricThread,
 )
-from efficio.objects.gears import SphericalGear
+from efficio.objects.gears import (
+    AbstractCogwheel,
+    CrownGear,
+    GearSystem,
+    MetricModule,
+    PressureAngle,
+    SphericalGear,
+    SpurGear,
+)
 from efficio.objects.molds import MoldFeatures, MoldPolarity, MoldTooling
 from efficio.objects.powertrain.axles.pillow_block import PillowBlock
 from efficio.objects.powertrain.bearings import StandardBearing
+from efficio.objects.powertrain.gears import (
+    DRIVETRAIN_GEAR_SYSTEM,
+    DrivetrainCrownGear,
+    DrivetrainSpurGear,
+)
 from efficio.objects.vessels import TriangularFlaskVase
 
 Bounds = Tuple[float, float, float, float, float, float]
@@ -123,6 +136,44 @@ class TestVessels(unittest.TestCase):
             Millimeter(40), Millimeter(80), Millimeter(30), Millimeter(10), 0.6
         )
         self.assertAlmostEqual(_size(_bounds(vase))[0], 80, delta=0.5)
+
+
+class TestGears(unittest.TestCase):
+    def test_involute_gears_are_cogwheels(self) -> None:
+        spur = SpurGear(MetricModule.MODULE_1, 20, Millimeter(5), Millimeter(5), False)
+        crown = CrownGear(
+            MetricModule.MODULE_1, 48, 12, Millimeter(4), Millimeter(5), False
+        )
+        for gear in (spur, crown):
+            self.assertIsInstance(gear, AbstractCogwheel)
+        self.assertEqual(spur.get_tooth_count(), 20)
+        # Tip radius of a standard spur gear is (teeth + 2) * module / 2.
+        self.assertAlmostEqual(spur.get_maximum_radius().value(), 11.0, places=6)
+        self.assertAlmostEqual(_size(_bounds(spur))[0], 22.0, delta=0.1)
+
+    def test_drivetrain_spur_gear_is_spur_gear_on_drivetrain_system(self) -> None:
+        system = DRIVETRAIN_GEAR_SYSTEM
+        fixed = DrivetrainSpurGear(16, Millimeter(10), Millimeter(5))
+        general = SpurGear(
+            system.module,
+            16,
+            Millimeter(10),
+            Millimeter(5),
+            True,
+            system.pressure_angle,
+            backlash=Millimeter(system.backlash),
+        )
+        self.assertEqual(fixed.geometry(), general.geometry())
+        self.assertAlmostEqual(_volume(fixed), _volume(general), places=3)
+
+    def test_drivetrain_gears_accept_other_system(self) -> None:
+        fine = GearSystem(MetricModule.MODULE_1, PressureAngle.MODERN, 0.1)
+        spur = DrivetrainSpurGear(20, Millimeter(5), Millimeter(5), system=fine)
+        crown = DrivetrainCrownGear(60, 12, Millimeter(4), Millimeter(5), system=fine)
+        self.assertAlmostEqual(spur.geometry().module, 1.0)
+        self.assertAlmostEqual(crown.geometry().pressure_angle_degrees, 20.0)
+        self.assertEqual(crown.geometry().problems(), [])
+        self.assertTrue(crown.shape() is not None)
 
 
 class TestParameterizedParts(unittest.TestCase):

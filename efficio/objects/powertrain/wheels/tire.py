@@ -5,7 +5,7 @@ from typing import Optional
 
 from efficio.measures import Measure, Millimeter
 from efficio.objects.base import EfficioObject
-from efficio.objects.powertrain.profiles import cylinder, prism, wrap
+from efficio.objects.profiles import cylinder, prism, wrap
 from efficio.objects.shapes import Shape
 
 

@@ -15,6 +15,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    get_args,
     get_type_hints,
 )
 
@@ -190,6 +191,23 @@ def main(
             kwargs[option_name] = int(option_value)
         elif option_type_str == "float":
             kwargs[option_name] = float(option_value)
+        elif float in get_args(option_type):
+            # A catalogue-or-numeric parameter accepts existing Enum names as
+            # well as custom dimensions without changing the catalogue itself.
+            members = [
+                candidate
+                for candidate in get_args(option_type)
+                if isinstance(candidate, type) and issubclass(candidate, Enum)
+            ]
+            match = next(
+                (
+                    candidate[option_value]
+                    for candidate in members
+                    if option_value in candidate.__members__
+                ),
+                None,
+            )
+            kwargs[option_name] = match if match is not None else float(option_value)
         else:
             # if option_type is an Enum, we need to convert the string to the enum value
             if issubclass(option_type, Enum):

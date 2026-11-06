@@ -26,6 +26,15 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from efficio.objects.fasteners.threads import MetricThread
+from efficio.objects.fits import RUNNING_CLEARANCE_MM, cross_pin_offset
+from efficio.objects.gears.face import FaceGearGeometry, crown_mesh_phase
+from efficio.objects.gears.involute import (
+    InvoluteGearGeometry,
+    centre_distance,
+    mesh_phase,
+)
+from efficio.objects.gears.standards import GearSystem, MetricModule, PressureAngle
+from efficio.objects.planar import Point, Span, distance
 from efficio.objects.powertrain.bearings import StandardBearing
 from efficio.objects.powertrain.differential.geometry import (
     PlanetPose,
@@ -33,15 +42,12 @@ from efficio.objects.powertrain.differential.geometry import (
 )
 from efficio.objects.powertrain.dowels import StandardDowel
 from efficio.objects.powertrain.engine.geometry import EngineGeometry
-from efficio.objects.powertrain.fits import RUNNING_CLEARANCE_MM, cross_pin_offset
 from efficio.objects.powertrain.gearbox.features import PlateHole, PlateSeat
-from efficio.objects.powertrain.gears.face import FaceGearGeometry, crown_mesh_phase
-from efficio.objects.powertrain.gears.involute import (
-    InvoluteGearGeometry,
-    centre_distance,
-    mesh_phase,
+from efficio.objects.powertrain.gears.system import (
+    DRIVETRAIN_CROWN_ADDENDUM,
+    DRIVETRAIN_CROWN_BACKLASH,
+    DRIVETRAIN_GEAR_SYSTEM,
 )
-from efficio.objects.powertrain.planar import Point, Span, distance
 
 
 class PlateSide(Enum):
@@ -95,14 +101,14 @@ def _box_distance(point: Point, box: Box2) -> float:
 @dataclass
 class DrivetrainLayout:
     # Gear train: crank pinion -> crown | input pinion -> idler -> ring.
-    module: float = 1.5
-    pressure_angle: float = 25.0
-    backlash: float = 0.15
+    module: float = float(DRIVETRAIN_GEAR_SYSTEM.module.value)
+    pressure_angle: float = float(DRIVETRAIN_GEAR_SYSTEM.pressure_angle.value)
+    backlash: float = DRIVETRAIN_GEAR_SYSTEM.backlash
     crank_pinion_teeth: int = 12
     crown_teeth: int = 48
-    crown_addendum: float = 0.8
+    crown_addendum: float = DRIVETRAIN_CROWN_ADDENDUM
     crown_body_thickness: float = 5.0
-    crown_backlash: float = 0.3
+    crown_backlash: float = DRIVETRAIN_CROWN_BACKLASH
     input_pinion_teeth: int = 16
     idler_teeth: int = 42
     stage_gear_width: float = 10.0
@@ -191,6 +197,15 @@ class DrivetrainLayout:
         return cls(**options)
 
     # ------------------------------------------------------------------ gears
+    @property
+    def gear_system(self) -> GearSystem:
+        """Module, pressure angle and backlash as one ``GearSystem``."""
+        return GearSystem(
+            MetricModule(self.module),
+            PressureAngle(self.pressure_angle),
+            self.backlash,
+        )
+
     def gear(self, teeth: int) -> InvoluteGearGeometry:
         return InvoluteGearGeometry(
             module=self.module,

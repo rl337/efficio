@@ -10,7 +10,7 @@ import cadquery as cq
 
 from efficio.objects.base import EfficioObject
 from efficio.objects.powertrain.engine.geometry import EngineGeometry
-from efficio.objects.powertrain.profiles import (
+from efficio.objects.profiles import (
     bearing_seat_cutter,
     box,
     cylinder,

@@ -1,20 +1,14 @@
 import math
 import unittest
 
-from efficio.objects.powertrain.gears.face import FaceGearGeometry, crown_mesh_phase
-from efficio.objects.powertrain.gears.involute import (
+from efficio.objects.gears.face import FaceGearGeometry, crown_mesh_phase
+from efficio.objects.gears.involute import (
     InvoluteGearGeometry,
     centre_distance,
     involute_function,
     mesh_phase,
 )
-from efficio.objects.powertrain.planar import (
-    Span,
-    convex_hull,
-    densify,
-    distance,
-    hull_of_circles,
-)
+from efficio.objects.planar import Span, convex_hull, densify, distance, hull_of_circles
 
 
 class TestInvoluteGeometry(unittest.TestCase):

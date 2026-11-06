@@ -13,7 +13,7 @@ from typing import Dict, Iterator, List, Optional, Tuple
 import cadquery as cq
 
 from efficio.objects.base import DEFAULT_PREVIEW_COLOR, Color, EfficioObject
-from efficio.objects.powertrain.fits import Process
+from efficio.objects.fits import Process
 from efficio.objects.shapes import Orientation, Shape, WorkplaneShape
 
 Interference = Tuple[str, str, float]

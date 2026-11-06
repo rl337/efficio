@@ -22,10 +22,9 @@ from efficio.examples.drivetrain import (
 )
 from efficio.measures import Millimeter
 from efficio.objects.assembly import Assembly, PartSpec
-from efficio.objects.gears import MetricModule, PressureAngle
+from efficio.objects.fits import Process
+from efficio.objects.gears import MetricModule, PressureAngle, SpurGear, mesh_phase
 from efficio.objects.powertrain.engine import EngineGeometry
-from efficio.objects.powertrain.fits import Process
-from efficio.objects.powertrain.gears import SpurGear, mesh_phase
 from efficio.objects.powertrain.layout import AxleStock, DrivetrainLayout
 
 

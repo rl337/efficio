@@ -1,12 +1,12 @@
 import math
 import unittest
 
+from efficio.objects.planar import distance
 from efficio.objects.powertrain.bearings import StandardBearing
 from efficio.objects.powertrain.differential.geometry import SpurDifferentialGeometry
 from efficio.objects.powertrain.dowels import StandardDowel
 from efficio.objects.powertrain.engine.geometry import EngineGeometry
 from efficio.objects.powertrain.layout import AxleStock, DrivetrainLayout, PlateSide
-from efficio.objects.powertrain.planar import distance
 
 
 class TestEngineGeometry(unittest.TestCase):

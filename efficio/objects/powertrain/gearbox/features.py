@@ -2,8 +2,8 @@
 
 from dataclasses import dataclass
 
+from efficio.objects.planar import Point
 from efficio.objects.powertrain.bearings import BallBearing
-from efficio.objects.powertrain.planar import Point
 
 
 @dataclass(frozen=True)

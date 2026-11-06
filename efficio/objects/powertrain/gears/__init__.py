@@ -1,23 +1,20 @@
-"""Involute spur gear geometry (pure) and solid gear parts."""
+"""Drivetrain gears: the general gears (``efficio.objects.gears``) fixed to
+the drivetrain's gear system. Only drivetrain-specific choices live here."""
 
-from efficio.objects.powertrain.gears.crown import CrownGear
-from efficio.objects.powertrain.gears.face import FaceGearGeometry, crown_mesh_phase
-from efficio.objects.powertrain.gears.involute import (
-    InvoluteGearGeometry,
-    centre_distance,
-    involute_function,
-    mesh_phase,
+from efficio.objects.powertrain.gears.parts import (
+    DrivetrainCrownGear,
+    DrivetrainSpurGear,
 )
-from efficio.objects.powertrain.gears.spur import CompoundSpurGear, SpurGear
+from efficio.objects.powertrain.gears.system import (
+    DRIVETRAIN_CROWN_ADDENDUM,
+    DRIVETRAIN_CROWN_BACKLASH,
+    DRIVETRAIN_GEAR_SYSTEM,
+)
 
 __all__ = [
-    "CompoundSpurGear",
-    "CrownGear",
-    "FaceGearGeometry",
-    "crown_mesh_phase",
-    "InvoluteGearGeometry",
-    "SpurGear",
-    "centre_distance",
-    "involute_function",
-    "mesh_phase",
+    "DRIVETRAIN_CROWN_ADDENDUM",
+    "DRIVETRAIN_CROWN_BACKLASH",
+    "DRIVETRAIN_GEAR_SYSTEM",
+    "DrivetrainCrownGear",
+    "DrivetrainSpurGear",
 ]

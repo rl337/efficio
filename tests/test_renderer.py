@@ -4,8 +4,7 @@ from efficio import renderer
 from efficio.__main__ import get_constructor_defaults, parse_color
 from efficio.measures import Millimeter
 from efficio.objects.fasteners import M3Bolt
-from efficio.objects.gears import TrapezoidalGear
-from efficio.objects.powertrain.gears import SpurGear
+from efficio.objects.gears import SpurGear, TrapezoidalGear
 from efficio.objects.primitives import Box, Cylinder, Sphere
 
 

@@ -4,14 +4,9 @@ from typing import List, Optional, Sequence
 
 from efficio.measures import Measure
 from efficio.objects.base import EfficioObject
+from efficio.objects.planar import Point, hull_of_circles
 from efficio.objects.powertrain.gearbox.features import PlateHole, PlateSeat
-from efficio.objects.powertrain.planar import Point, hull_of_circles
-from efficio.objects.powertrain.profiles import (
-    bearing_seat_cutter,
-    cylinder,
-    prism,
-    wrap,
-)
+from efficio.objects.profiles import bearing_seat_cutter, cylinder, prism, wrap
 from efficio.objects.shapes import Shape
 
 

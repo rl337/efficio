@@ -5,7 +5,13 @@ import cadquery as cq
 
 from efficio.measures import Millimeter
 from efficio.objects.base import EfficioObject
-from efficio.objects.gears import MetricModule, PressureAngle
+from efficio.objects.gears import (
+    CompoundSpurGear,
+    CrownGear,
+    MetricModule,
+    PressureAngle,
+    SpurGear,
+)
 from efficio.objects.powertrain.axles import HexWheelAdapter, PillowBlock
 from efficio.objects.powertrain.bearings import BEARING_625, StandardBearing
 from efficio.objects.powertrain.differential import (
@@ -25,11 +31,10 @@ from efficio.objects.powertrain.engine import (
     Piston,
 )
 from efficio.objects.powertrain.gearbox import BearingPlate, PlateHole, PlateSeat
-from efficio.objects.powertrain.gears import CompoundSpurGear, CrownGear, SpurGear
 from efficio.objects.powertrain.layout import DrivetrainLayout, PlateSide
-from efficio.objects.powertrain.profiles import d_profile
 from efficio.objects.powertrain.shafts import Shaft, Standoff
 from efficio.objects.powertrain.wheels import Rim, Tire
+from efficio.objects.profiles import d_profile
 from efficio.objects.shapes import Shape
 
 Bounds = Tuple[float, float, float, float, float, float]

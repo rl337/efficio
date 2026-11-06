@@ -49,6 +49,9 @@ COPY . .
 RUN poetry install
 
 # Set environment variables
+# Never select a host virtualenv bind-mounted at /app/.venv.
+ENV POETRY_VIRTUALENVS_IN_PROJECT=false
+ENV EFFICIO_CHECK_ENV=docker
 ENV PYTHONPATH=/app
 ENV DISPLAY=:99
 

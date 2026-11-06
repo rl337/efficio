@@ -17,13 +17,15 @@ from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
 from efficio.objects.fasteners.threads import MetricThread
-from efficio.objects.powertrain.fits import cross_pin_offset
-from efficio.objects.powertrain.gears.involute import (
+from efficio.objects.fits import cross_pin_offset
+from efficio.objects.gears.involute import (
     InvoluteGearGeometry,
     centre_distance,
     mesh_phase,
 )
-from efficio.objects.powertrain.planar import Point, Span
+from efficio.objects.gears.standards import GearSystem, MetricModule, PressureAngle
+from efficio.objects.planar import Point, Span
+from efficio.objects.powertrain.gears.system import DRIVETRAIN_GEAR_SYSTEM
 
 
 @dataclass(frozen=True)
@@ -37,9 +39,9 @@ class PlanetPose:
 
 @dataclass
 class SpurDifferentialGeometry:
-    module: float = 1.5
-    pressure_angle: float = 25.0
-    backlash: float = 0.15
+    module: float = float(DRIVETRAIN_GEAR_SYSTEM.module.value)
+    pressure_angle: float = float(DRIVETRAIN_GEAR_SYSTEM.pressure_angle.value)
+    backlash: float = DRIVETRAIN_GEAR_SYSTEM.backlash
     ring_teeth: int = 46
     sun_teeth: int = 12
     planet_teeth: int = 12
@@ -60,6 +62,15 @@ class SpurDifferentialGeometry:
     # driven through a cross pin seated in a slot on the sun's outer face.
     axle_cross_pin_diameter: float = 0.0
     axle_cross_pin_length: float = 9.0
+
+    @property
+    def gear_system(self) -> GearSystem:
+        """Module, pressure angle and backlash as one ``GearSystem``."""
+        return GearSystem(
+            MetricModule(self.module),
+            PressureAngle(self.pressure_angle),
+            self.backlash,
+        )
 
     @property
     def planet_pin_diameter(self) -> float:
