@@ -9,6 +9,7 @@ from efficio.objects.base import EfficioObject
 from efficio.objects.connectors import HoseBarb, HoseBarbDimensions
 from efficio.objects.fits import cross_pin_offset
 from efficio.objects.gaskets import GasketFace, KeepOut, Opening, OpeningRole
+from efficio.objects.gaskets.face import extrude, footprint
 from efficio.objects.profiles import wrap, x_cylinder
 from efficio.objects.pumps.external_gear import GearPumpGeometry
 from efficio.objects.pumps.geometry import BlindSupportDimensions
@@ -66,9 +67,18 @@ class BlindSupportPart(EfficioObject):
         terminal: Optional[HoseBarbDimensions] = None,
         terminal_start: float = 0.0,
         root_cover_clearance: float = 0.05,
+        gasket_style: str = "capsule",
+        full_face_land: float = 0.3,
     ):
         if kind not in {"body", "cover", "gasket", "driver_shaft", "idler_shaft"}:
             raise ValueError("unknown blind-support part")
+        if gasket_style not in {"capsule", "full_face"}:
+            raise ValueError("unknown gasket style")
+        if not math.isfinite(full_face_land) or full_face_land <= 0:
+            raise ValueError("full-face hard land must be positive")
+        if gasket_style == "full_face" and kind == "gasket":
+            raise ValueError("use generate_gasket for the full-face free part")
+        self.gasket_style, self.full_face_land = gasket_style, full_face_land
         self.d, self.kind = dimensions, kind
         self.terminal, self.terminal_start = terminal, terminal_start
         self.root_cover_clearance = root_cover_clearance
@@ -98,11 +108,32 @@ class BlindSupportPart(EfficioObject):
             and abs(f.Center().z - z) < 1e-7
             and abs(f.normalAt().z) > 0.999999
         ]
-        if len(faces) != 1 or len(faces[0].innerWires()) != 1:
+        if len(faces) != 1:
             raise ValueError(
                 "pump gasket recess face is ambiguous; explicit remapping required"
             )
         face = faces[0]
+        openings = []
+        for wire in face.innerWires():
+            center = wire.Center()
+            if abs(center.x - g.centres / 2) < 1e-6 and abs(center.y) < 1e-6:
+                openings.append(
+                    Opening("enclosed_wet_region", wire, OpeningRole.WET_CAVITY)
+                )
+            else:
+                matches = [
+                    i
+                    for i, (x, y) in enumerate(d.bolt_points)
+                    if abs(center.x - x) < 1e-6 and abs(center.y - y) < 1e-6
+                ]
+                if len(matches) != 1:
+                    raise ValueError("unrecognized pump gasket opening")
+                openings.append(Opening(f"bolt_{matches[0]}", wire, OpeningRole.BOLT))
+        expected = {"enclosed_wet_region"}
+        if self.gasket_style == "full_face":
+            expected |= {f"bolt_{i}" for i in range(4)}
+        if {o.name for o in openings} != expected:
+            raise ValueError("pump gasket opening set changed")
         wet = GearPumpGeometry(**vars(g)).cavity()
         swept = cylinder(
             g.tip_radius, g.base + g.face_clearance, g.depth - g.face_clearance
@@ -117,13 +148,7 @@ class BlindSupportPart(EfficioObject):
         return {
             "cover_seal": GasketFace(
                 face,
-                (
-                    Opening(
-                        "enclosed_wet_region",
-                        face.innerWires()[0],
-                        OpeningRole.WET_CAVITY,
-                    ),
-                ),
+                tuple(openings),
                 (
                     KeepOut("wet cavity", wet),
                     KeepOut("full rotor swept volumes", swept),
@@ -220,7 +245,9 @@ class BlindSupportPart(EfficioObject):
         if self.kind == "body":
             if self.terminal is None:
                 solid = solid.cut(g.port_void(-1)).cut(g.port_void(1))
-            solid = solid.cut(g.cavity()).cut(gasket)
+            solid = solid.cut(g.cavity())
+            if self.gasket_style == "capsule":
+                solid = solid.cut(gasket)
             for x in (0.0, g.centres):
                 solid = solid.cut(
                     cylinder(
@@ -250,7 +277,9 @@ class BlindSupportPart(EfficioObject):
         for root in roots:
             # Add the relieved support to the already machined base body, keeping
             # its existing faces intact. Cut every functional void from support.
-            root = root.cut(g.cavity()).cut(gasket)
+            root = root.cut(g.cavity())
+            if self.gasket_style == "capsule":
+                root = root.cut(gasket)
             assert self.terminal is not None
             for x in (0.0, g.centres):
                 root = root.cut(
@@ -275,6 +304,20 @@ class BlindSupportPart(EfficioObject):
                 cq.Vector(0, 1, 0),
             )
             solid = solid.cut(drilling)
+        if self.kind == "body" and self.gasket_style == "full_face":
+            tops = [
+                f
+                for f in solid.Faces()
+                if f.geomType() == "PLANE"
+                and abs(f.Center().z - g.depth) < 1e-7
+                and abs(f.normalAt().z) > 0.999999
+            ]
+            if len(tops) != 1:
+                raise ValueError("full mating face is ambiguous")
+            floor = footprint(
+                tops[0], self.full_face_land, self.full_face_land, "arc"
+            ).translate((0, 0, -d.gasket_depth))
+            solid = solid.cut(extrude(floor, d.gasket_depth, cq.Vector(0, 0, 1)))
         return wrap(cq.Workplane("XY").newObject([solid.clean()]))
 
     def place_terminal(self, shape: cq.Shape, sign: int) -> cq.Shape:

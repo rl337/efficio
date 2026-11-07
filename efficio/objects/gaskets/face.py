@@ -6,7 +6,7 @@ model preserves volume but does not model rubber mechanics or guarantee sealing.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import cast
+from typing import Literal, cast
 
 import cadquery as cq
 
@@ -43,7 +43,11 @@ def extrude(face: cq.Face, height: float, normal: cq.Vector) -> cq.Solid:
     )
 
 
-def offset(wire: cq.Wire, distance: float) -> cq.Wire:
+def offset(
+    wire: cq.Wire,
+    distance: float,
+    kind: Literal["arc", "intersection"] = "intersection",
+) -> cq.Wire:
     if abs(distance) < 1e-10:
         return wire
     edges = wire.Edges()
@@ -56,7 +60,7 @@ def offset(wire: cq.Wire, distance: float) -> cq.Wire:
         return cq.Wire.makeCircle(
             radius, wire.Center(), cq.Face.makeFromWires(wire).normalAt()
         )
-    wires = wire.offset2D(distance, kind="intersection")
+    wires = wire.offset2D(distance, kind=kind)
     if len(wires) != 1 or not wires[0].isValid():
         raise ValueError(
             "boundary offset collapsed or split; explicit redesign required"
@@ -64,11 +68,16 @@ def offset(wire: cq.Wire, distance: float) -> cq.Wire:
     return wires[0]
 
 
-def footprint(face: cq.Face, outer: float, inner: float) -> cq.Face:
+def footprint(
+    face: cq.Face,
+    outer: float,
+    inner: float,
+    kind: Literal["arc", "intersection"] = "intersection",
+) -> cq.Face:
     try:
         result = cq.Face.makeFromWires(
-            offset(face.outerWire(), -outer),
-            [offset(w, inner) for w in face.innerWires()],
+            offset(face.outerWire(), -outer, kind),
+            [offset(w, inner, kind) for w in face.innerWires()],
         )
     except Exception as exc:
         raise ValueError("boundary offset failed; explicit redesign required") from exc
@@ -108,6 +117,7 @@ class GasketDesign:
     minimum_width: float
     limiting_boundaries: str
     stop_planes_checked: bool
+    rounded_area_loss: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -171,10 +181,41 @@ class GasketFace:
             ):
                 raise ValueError("hard-stop face does not match declared closure plane")
         recess = extrude(self.face, self.closed_height, normal)
-        flat = footprint(self.face, parameters.outer_inset, parameters.inner_inset)
+        kind: Literal["arc", "intersection"] = (
+            "arc" if parameters.round_to_width else "intersection"
+        )
+        flat = footprint(
+            self.face, parameters.outer_inset, parameters.inner_inset, kind
+        )
+        rounded_area_loss = 0.0
         from efficio.objects.gaskets.width import measure_band_width
 
-        width, limiting = measure_band_width(flat)
+        if parameters.round_to_width:
+            # Explicit morphological opening: round tips/corners to a connected
+            # union of disks of the requested diameter. Never silently used.
+            if any(e.geomType() not in {"LINE", "CIRCLE"} for e in flat.Edges()):
+                raise ValueError(
+                    "rolling-disk width certificate supports line/arc boundaries only"
+                )
+            radius = parameters.minimum_width / 2
+            core = footprint(flat, radius, radius, "arc")
+            core_solid = extrude(core, 1, normal)
+            if len(core_solid.Solids()) != 1 or not core_solid.isValid():
+                raise ValueError("minimum-width erosion disconnects gasket")
+            rounded = footprint(core, -radius, -radius, "arc")
+            if (
+                extrude(rounded, 1, normal).cut(extrude(flat, 1, normal)).Volume()
+                > 1e-6
+            ):
+                raise ValueError("rolling-disk reconstruction escapes original gasket")
+            rounded_area_loss = flat.Area() - rounded.Area()
+            flat = rounded
+            width, limiting = (
+                parameters.minimum_width,
+                "rolling-disk coverage lower bound; rounded tips/corners",
+            )
+        else:
+            width, limiting = measure_band_width(flat)
         if width + 1e-7 < parameters.minimum_width:
             raise ValueError(
                 f"sealing band {width:.6g} mm at {limiting} is below minimum {parameters.minimum_width:g} mm"
@@ -190,18 +231,21 @@ class GasketFace:
         lo, hi = 0.0, max(parameters.outer_inset, parameters.inner_inset)
         if hi == 0:
             raise ValueError("compression requires lateral room")
-        if footprint(flat, -hi, -hi).Area() < target_area:
+        if footprint(flat, -hi, -hi, kind).Area() < target_area:
             raise ValueError("insufficient spread range")
         for _ in range(40):
             mid = (lo + hi) / 2
-            if footprint(flat, -mid, -mid).Area() < target_area:
+            if footprint(flat, -mid, -mid, kind).Area() < target_area:
                 lo = mid
             else:
                 hi = mid
-        installed = extrude(footprint(flat, -hi, -hi), self.closed_height, normal)
+        installed = extrude(footprint(flat, -hi, -hi, kind), self.closed_height, normal)
         guard = extrude(
             footprint(
-                flat, -hi * parameters.spread_margin, -hi * parameters.spread_margin
+                flat,
+                -hi * parameters.spread_margin,
+                -hi * parameters.spread_margin,
+                kind,
             ),
             self.closed_height,
             normal,
@@ -233,4 +277,5 @@ class GasketFace:
             width,
             limiting,
             bool(self.stop_faces),
+            rounded_area_loss,
         )

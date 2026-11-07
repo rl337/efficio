@@ -11,6 +11,7 @@ class GasketParameters:
     inner_inset: float
     spread_margin: float = 1.25
     minimum_width: float = 1.0
+    round_to_width: bool = False
 
     def problems(self) -> list[str]:
         values = (

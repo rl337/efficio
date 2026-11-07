@@ -94,3 +94,36 @@ def rectangular_gasket_review() -> tuple[cq.Shape, GasketFace, GasketDesign]:
         "Example requires rigid closure 0.3 mm above plate face; mating lid/stops not generated",
     )
     return plate, declared, declared.generate(GasketParameters(0.31, 1, 1, 1.1))
+
+
+def full_face_pump_review() -> tuple[BlindSupportPart, GasketDesign]:
+    original = water_pump_dimensions()
+    # Deeper gasket seat requires lowering the side drillings to retain roof.
+    d = replace(
+        original,
+        pump=replace(original.pump, wall=16, port_drop=1.0),
+        gasket_width=3.0,
+        gasket_depth=1.0,
+        exterior_offset=10.0,
+        boss_radius=6.0,
+    )
+    water_wall_policy().require(d.wall_measurements())
+    body = BlindSupportPart(
+        d,
+        "body",
+        water_hose_terminal(d),
+        12,
+        gasket_style="full_face",
+        full_face_land=0.7,
+    )
+    return body, body.generate_gasket(
+        "cover_seal",
+        GasketParameters(
+            free_thickness=1.05,
+            outer_inset=0.4,
+            inner_inset=0.4,
+            minimum_width=2.0,
+            spread_margin=1.25,
+            round_to_width=True,
+        ),
+    )

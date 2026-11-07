@@ -125,3 +125,14 @@ The optional cosine bolt-coverage heuristic is deliberately deferred: it would
 not strengthen width or sealing validation and its arbitrary normalized 0.7071
 threshold must not be mistaken for gasket pressure. Bolt layout/contact analysis
 can be a separate future diagnostic.
+
+## Full-face follow-up
+
+The oval pump ring above is retained as an earlier comparison. The explicit
+`full_face_pump_review()` now follows the usable entire mating face, including
+both nose regions and bolt openings. It uses the opt-in rolling-disk width
+construction (`round_to_width=True`), which rounds tips/corners and reports the
+removed area. Its minimum width is a construction lower bound, not the earlier
+primitive-pair distance measurement. Default width behavior is unchanged.
+See [full-face pump gasket](full-face-pump-gasket.md) for geometry, limitations,
+residual internal leakage and the coordinated deeper recess/port changes.
