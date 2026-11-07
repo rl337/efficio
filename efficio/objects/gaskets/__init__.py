@@ -1,6 +1,6 @@
 """Parameterized planar gasket generation, separate from sealing qualification."""
 
-from .face import (
+from efficio.objects.gaskets.face import (
     GasketDesign,
     GasketFace,
     GeneratedGasket,
@@ -8,7 +8,7 @@ from .face import (
     Opening,
     OpeningRole,
 )
-from .geometry import GasketParameters
+from efficio.objects.gaskets.geometry import GasketParameters
 
 __all__ = [
     "GasketDesign",
