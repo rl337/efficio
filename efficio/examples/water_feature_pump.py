@@ -1,9 +1,11 @@
 """Independent water-feature wet-end experiment; no engine dependency."""
 
 import math
+from dataclasses import replace
 from typing import Optional
 
 from efficio.objects.assembly import Assembly, HardwareItem, PartSpec
+from efficio.objects.connectors import HoseBarbDimensions
 from efficio.objects.fits import Process
 from efficio.objects.pumps.blind_support import BlindSupportPart
 from efficio.objects.pumps.external_gear import GearPumpGeometry, PumpPart
@@ -33,6 +35,7 @@ def water_pump_dimensions(
         base=6 + max(2.0, minimum),
         cover=6 + max(2.0, minimum),
         port_radius=2,
+        port_drop=0.3,
         seal_pocket_radius=4,
         collar_radius=5,
         shaft_extension=18,
@@ -76,7 +79,7 @@ def water_wall_policy() -> WallPolicy:
             "rear_blind_floor",
             "idler_cover_floor",
             "seal_seat_floor",
-            "port_roof_to_joint",
+            "port_roof_to_gasket",
             "gasket_outer_waist_vertical",
             "gasket_inner_land",
         ),
@@ -97,11 +100,32 @@ def slip_cast_water_profile() -> MaterialWallProfile:
     )
 
 
+def water_hose_terminal(d: BlindSupportDimensions) -> HoseBarbDimensions:
+    terminal = HoseBarbDimensions(
+        bore_radius=d.pump.port_radius,
+        stem_radius=d.pump.port_radius + d.back_web,
+        length=26.0,
+        barb_radius=d.pump.port_radius + d.back_web + 0.4,
+        barb_length=3.0,
+        barb_starts=(14.0, 20.0),
+        hose_id=2 * (d.pump.port_radius + d.back_web),
+        hose_wall=2.0,
+        hose_start=9.0,
+        clamp_length=5.0,
+        clamp_clearance=1.0,
+    )
+    replace(water_wall_policy(), minimum_mm=d.back_web).require(
+        {**d.wall_measurements(), "terminal_wall": terminal.finished_wall}
+    )
+    return terminal
+
+
 def water_feature_pump(
     angle: float = 0.0, profile: Optional[MaterialWallProfile] = None
 ) -> Assembly:
     d = water_pump_dimensions(profile)
     g = GearPumpGeometry(**vars(d.pump))
+    hose = water_hose_terminal(d)
     assembly = Assembly("water_feature_wet_end")
     for kind, color, process, material in [
         (
@@ -137,7 +161,12 @@ def water_feature_pump(
     ]:
         child = assembly.add_subassembly(Assembly(kind, color))
         spec = PartSpec(
-            "water_" + kind, BlindSupportPart(d, kind), (process,), material
+            "water_" + kind,
+            BlindSupportPart(
+                d, kind, water_hose_terminal(d) if kind == "body" else None, 12.0
+            ),
+            (process,),
+            material,
         )
         x = g.centres if kind == "idler_shaft" else 0.0
         phase = g.idler_phase(angle) if kind == "idler_shaft" else angle
@@ -175,6 +204,16 @@ def water_feature_pump(
         )
     assembly.hardware.extend(
         [
+            HardwareItem(
+                f"{hose.hose_id:g} mm ID x {hose.hose_id + 2 * hose.hose_wall:g} mm OD flexible water hose",
+                2,
+                "Provisional silicone or equivalent; grade, collapse resistance and routing TBD",
+            ),
+            HardwareItem(
+                "hose clamp",
+                2,
+                f"{hose.clamp_length:g} mm axial land; <={2 * hose.access_radius:g} mm swept OD envelope; select non-cutting clamp and qualify torque",
+            ),
             HardwareItem(
                 "case clamp bolt / nut / washer sets",
                 4,

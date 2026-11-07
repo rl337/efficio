@@ -1,10 +1,12 @@
 """Rounded wet end with blind journals; seal seat is an interface, not a seal."""
 
+import math
 from typing import Optional, cast
 
 import cadquery as cq
 
 from efficio.objects.base import EfficioObject
+from efficio.objects.connectors import HoseBarb, HoseBarbDimensions
 from efficio.objects.fits import cross_pin_offset
 from efficio.objects.profiles import wrap, x_cylinder
 from efficio.objects.pumps.external_gear import GearPumpGeometry
@@ -56,10 +58,25 @@ class BlindSupportPart(EfficioObject):
     seal lip, purchased bush or mechanical coupling is silently simulated.
     """
 
-    def __init__(self, dimensions: BlindSupportDimensions, kind: str):
+    def __init__(
+        self,
+        dimensions: BlindSupportDimensions,
+        kind: str,
+        terminal: Optional[HoseBarbDimensions] = None,
+        terminal_start: float = 0.0,
+    ):
         if kind not in {"body", "cover", "gasket", "driver_shaft", "idler_shaft"}:
             raise ValueError("unknown blind-support part")
         self.d, self.kind = dimensions, kind
+        self.terminal, self.terminal_start = terminal, terminal_start
+        if terminal is not None and (
+            not math.isfinite(terminal_start)
+            or terminal_start <= 0
+            or terminal.bore_radius != dimensions.pump.port_radius
+        ):
+            raise ValueError(
+                "terminal requires positive placement and a matching pump bore"
+            )
 
     def shape(self) -> Optional[Shape]:
         d = self.d
@@ -118,6 +135,12 @@ class BlindSupportPart(EfficioObject):
             )
         else:
             solid = capsule(g.centres, g.half_height, z0, z1)
+        if self.kind == "body" and self.terminal is not None:
+            terminal = HoseBarb(self.terminal)
+            for sign in (-1, 1):
+                solid = solid.fuse(self.place_terminal(terminal.envelope(), sign))
+            for sign in (-1, 1):
+                solid = solid.cut(self.place_terminal(terminal.bore(), sign))
         if self.kind == "body":
             solid = (
                 solid.cut(g.cavity())
@@ -152,6 +175,14 @@ class BlindSupportPart(EfficioObject):
         for x, y in d.bolt_points:
             solid = solid.cut(cylinder(g.bolt_radius, z0 - 0.01, z1 + 0.01, x=x, y=y))
         return wrap(cq.Workplane("XY").newObject([solid.clean()]))
+
+    def place_terminal(self, shape: cq.Shape, sign: int) -> cq.Shape:
+        if sign not in (-1, 1):
+            raise ValueError("port sign must be -1 or +1")
+        g = self.d.pump
+        return shape.rotate((0, 0, 0), (1, 0, 0), -90 * sign).translate(
+            (g.centres / 2, sign * self.terminal_start, g.port(sign)[2])
+        )
 
 
 def measured_housing_interfaces(d: BlindSupportDimensions) -> dict[str, float]:

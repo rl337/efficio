@@ -42,7 +42,7 @@ Default measured / derived dimensions (mm):
 | Gasket outer edge to case exterior at waist | 2.425215 | Exact BRep wire distance at joint |
 | Blind journal end floors | 2.0 | Axial analytical dimension, tested with solid probes |
 | Driver seal-seat floor | 4.0 | Cover minus seal pocket depth |
-| Side port roof to gasket-joint plane | 2.08 | Port cylinder radius and axial position |
+| Side port roof to gasket recess floor | 2.08 | Port cylinder radius, lowered axial position and groove depth |
 | Inner gasket land | 0.7 | Explicit local sealing-feature exception |
 
 The 7.5 mm main offset is driven by preserving the existing capsule gasket and
@@ -63,7 +63,7 @@ seams where lobes meet; this is not a smooth fillet or a constant-width 2D inset
 at every concave junction. No bevel is cut at the gasket joint, port lip, bolt
 hole or seal bore.
 
-The plain port axes and diameter remain fixed, but the shorter exterior moves
+At the organic-housing revision, the plain port axes and diameter remained fixed, but the shorter exterior moved
 the centerline mouths from y=+/-21.33 to +/-15.9552 mm. Existing drilling cutters
 still extend fully through. No fitted hoses existed to preserve; the eventual
 connector design must use the new exterior, whose mouth is curved.
@@ -134,3 +134,14 @@ layer thickness. Those limits are not adopted as structural pump limits.
 identifies product-specific cure and physical-property data and directs users
 to support for additional mechanical properties. Neither source establishes a
 safe wall for this unselected material/application.
+
+
+## Tube-terminal revision correction
+
+The earlier port-roof budget measured to the joint plane and omitted the 0.3 mm
+recess. Its actual port-to-gasket-floor clearance was 1.78 mm. The terminal
+revision lowers both bores 0.3 mm (z=11.78 instead of 12.08) and checks against
+the recess floor, restoring a 2.08 mm budget without changing the chamber or
+moving the gasket. Terminal stems have a 2 mm minimum radial wall under the
+same provisional resin profile. The earlier case-volume comparison excludes
+the new terminals. See `tube-terminals.md` for current interfaces and tests.

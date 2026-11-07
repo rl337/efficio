@@ -19,7 +19,7 @@ def test_wall_policy_rejects_missing_and_thin_features() -> None:
     measurements = water_pump_dimensions().wall_measurements()
     assert not policy.violations(measurements)
     assert policy.violations({})
-    measurements["port_roof_to_joint"] = 1.99
+    measurements["port_roof_to_gasket"] = 1.99
     with pytest.raises(ValueError, match="port_roof"):
         policy.require(measurements)
     with pytest.raises(ValueError):

@@ -53,7 +53,9 @@ class GearPumpGeometry(GearPumpDimensions):
             self.port_radius,
             self.half_height + 1,
             cq.Vector(
-                self.centres / 2, 0, self.base + self.width / 2 + self.face_clearance
+                self.centres / 2,
+                0,
+                self.base + self.width / 2 + self.face_clearance - self.port_drop,
             ),
             cq.Vector(0, sign, 0),
         )

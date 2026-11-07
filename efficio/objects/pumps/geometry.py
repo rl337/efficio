@@ -20,6 +20,7 @@ class GearPumpDimensions:
     base: float = 3.0
     cover: float = 3.0
     port_radius: float = 1.5
+    port_drop: float = 0.0
     bolt_radius: float = 1.65
     seal_pocket_radius: float = 3.5
     seal_pocket_depth: float = 1.0
@@ -44,9 +45,16 @@ class GearPumpDimensions:
         return []
 
     def _validate(self) -> None:
-        values = [v for k, v in vars(self).items() if k != "teeth"]
+        values = [v for k, v in vars(self).items() if k not in {"teeth", "port_drop"}]
         if not all(math.isfinite(v) and v > 0 for v in values):
             raise ValueError("pump dimensions must be finite and positive")
+        if (
+            not math.isfinite(self.port_drop)
+            or not 0
+            <= self.port_drop
+            < self.width / 2 + self.face_clearance - self.port_radius
+        ):
+            raise ValueError("port drop must leave its bore inside the chamber height")
         if (
             isinstance(self.teeth, bool)
             or not isinstance(self.teeth, int)
@@ -130,7 +138,7 @@ class GearPumpDimensions:
         return (
             self.centres / 2,
             sign * self.half_height,
-            self.base + self.width / 2 + self.face_clearance,
+            self.base + self.width / 2 + self.face_clearance - self.port_drop,
         )
 
 
@@ -267,7 +275,11 @@ class BlindSupportDimensions:
             "rear_blind_floor": self.back_web,
             "idler_cover_floor": self.front_web,
             "seal_seat_floor": g.cover - self.seal_depth,
-            "port_roof_to_joint": g.width / 2 + g.face_clearance - g.port_radius,
+            "port_roof_to_gasket": g.width / 2
+            + g.face_clearance
+            + g.port_drop
+            - g.port_radius
+            - self.gasket_depth,
             "gasket_outer_waist_vertical": waist
             - g.radius
             - self.gasket_inset

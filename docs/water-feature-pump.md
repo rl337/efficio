@@ -49,8 +49,8 @@ suitable than a purchased centrifugal fountain pump; this project tests that.
   selected catalogue seal or installed sealing lip. Do not order by dimensions
   alone. Supplier must approve water, speed, pressure, shaft finish, runout,
   mounting orientation and lubrication. Add positive seal retention if needed.
-- Plain 4 mm inlet/outlet bores at x=10, z=12.08, y=+/-15.9552 at the centerline mouth (previous capsule +/-21.33). These are
-  actual connected drilling paths, **not threaded fittings or hose barbs**.
+- Integral hose terminals with 4 mm inlet/outlet bores at x=10, z=11.78, y=+/-15.9552 at the centerline mouth (previous capsule +/-21.33). The organic shell mouth is now extended by integral barbs to y=+/-38 mm.
+  See [tube terminals](tube-terminals.md) for hose, clamp and manufacturing assumptions.
   Opposing bores enter the central mesh pocket. At driver CCW viewed from +Z,
   +Y is inlet and -Y outlet; fluid travels around the outside of both gears.
   The gears do not provide an ideal seal through the central mesh or end gaps.
@@ -78,8 +78,8 @@ coupling/axial retention. No omitted motor is disguised as a fabricated part.
    seal and external retention/coupling according to their supplier procedures.
    Verify hand rotation over many revolutions before powering. Case faces may
    become thrust wear surfaces if axial restraint fails.
-5. Fit positively retained water-compatible hose connectors at both plain ports.
-   No glue-only pressure joint is assumed. Establish a removable, large-area
+5. Fit the qualified hose/clamp pair to both integral terminals; validate the
+   barb-to-hose seal and pull-off retention. No glue-only pressure joint is assumed. Establish a removable, large-area
    screened pickup, submerged below minimum reservoir water level; no mesh or
    fitting geometry is yet modeled. Size/test screen for negligible restriction.
 

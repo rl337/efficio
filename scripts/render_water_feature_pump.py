@@ -12,10 +12,15 @@ from render_resin_engine import render
 from efficio import preview, renderer
 from efficio.examples.water_feature_pump import (
     water_feature_pump,
+    water_hose_terminal,
     water_pump_dimensions,
 )
 from efficio.inspection import inspect_parts
-from efficio.objects.pumps.blind_support import measured_housing_interfaces
+from efficio.objects.connectors import HoseBarb
+from efficio.objects.pumps.blind_support import (
+    BlindSupportPart,
+    measured_housing_interfaces,
+)
 from efficio.objects.pumps.external_gear import GearPumpGeometry
 
 
@@ -37,8 +42,8 @@ def main(output: Path) -> None:
     for name, solid, _ in parts:
         cq.exporters.export(solid, str(output / (name + ".step")))
     image = canvas(
-        "Water-feature pump / organic offset housing",
-        "Actual Efficio CAD | Constant-distance chamber envelope + cylindrical bolt bosses | Unqualified resin prototype",
+        "Water-feature pump / integral tube terminals",
+        "Actual Efficio CAD | Two integral hose barbs | Provisional 8 mm ID hose | No measured sealing or pumping",
         1400,
     )
     image.paste(render(parts, 840, 850), (40, 140))
@@ -51,23 +56,30 @@ def main(output: Path) -> None:
     lines = [
         "Left: assembled case. Right: cover and compressed gasket envelope lifted for review.",
         "16T + 16T shared involute rotors; module 1.25; 8 mm width; 20 mm shaft spacing.",
-        "Case: 57.66 x 37.66 x 24.16 mm. 7.5 mm chamber offset; four 9.3 mm diameter bolt bosses.",
+        "Two 4 mm through bores; 8 mm stems; 8.8 mm barb peaks; 5 mm straight clamp lands.",
         "One 6 mm nominal driver exits the cover. Idler and rear driver journals end in blind pockets.",
         "12 x 4 mm seal seat is EMPTY; seal, dry coupling, axial retention and clamp hardware must be selected.",
-        "0.6 mm exposed top/bottom bevels; flat gasket joint preserved. About 20.7% less case material.",
+        "Hose engagement: 17 mm. Overall terminal-to-terminal span: 76 mm. Hoses and clamps are not installed.",
     ]
     for i, line in enumerate(lines):
         draw.text((50, 1020 + i * 48), line, font=font(21), fill=INK)
-    image.save(output / "21-organic-pump-assembly.png")
+    image.save(output / "23-pump-hose-terminals.png")
+    # Display plane slightly off port-axis seams avoids an OCC coincident-edge failure.
     face = inspect_parts(
         [p for p in parts if p[0] == "water_body"],
         axis="Z",
-        position=g.base + g.width / 2,
+        position=g.port(1)[2] + 0.05,
         mode="halfspace",
     )
     face += [p for p in parts if p[0] in {"driver", "idler"}]
     fluid_g = GearPumpGeometry(**vars(g))
-    fluid = fluid_g.cavity().fuse(fluid_g.port_void(-1), fluid_g.port_void(1))
+    terminal = HoseBarb(water_hose_terminal(d))
+    body_object = BlindSupportPart(d, "body", terminal.dimensions, 12)
+    fluid = fluid_g.cavity().fuse(
+        fluid_g.port_void(-1),
+        fluid_g.port_void(1),
+        *(body_object.place_terminal(terminal.bore(), sign) for sign in (-1, 1)),
+    )
     fluid = fluid.intersect(
         cq.Solid.makeBox(200, 200, g.base + g.width / 2, cq.Vector(-100, -100, 0))
     )
@@ -77,11 +89,14 @@ def main(output: Path) -> None:
             g.radius + d.exterior_offset, g.depth, cq.Vector(g.centres, 0, 0)
         )
     )
+    envelope = envelope.fuse(
+        *(body_object.place_terminal(terminal.envelope(), sign) for sign in (-1, 1))
+    )
     fluid = fluid.intersect(envelope)
     face.append(("actual_chamber_and_port_void", fluid, (217, 235, 241)))
     axial = inspect_parts(parts, axis="Y", position=0, mode="halfspace")
     image = canvas(
-        "Organic housing / chamber, bosses and wall budgets",
+        "Tube terminals / continuous passages and hose access",
         "Display sections only: manufactured housing stays whole | Rotation viewed from the drive end (+Z)",
         1400,
     )
@@ -101,13 +116,13 @@ def main(output: Path) -> None:
         "Face (left): upper port INLET with left driver CCW / right idler CW; lower port OUTLET.",
         "Fluid is carried around both outer walls. Reverse rotation reverses the ports.",
         "Axial section (right): blind rear journals and idler cover pocket; only driver reaches the exterior.",
-        "Measured rim-to-bolt wall: 2.40 mm. Gasket-to-outer waist: 2.425 mm. Blind floors: 2.0 mm.",
+        "Terminal minimum radial wall: 2 mm. Port axes lowered 0.3 mm: 2.08 mm remains below the gasket groove.",
         "Leaks remain possible through running gaps, pinned rotor bores, gasket and unfilled shaft-seal seat.",
-        "Wall policy: provisional resin budget, NOT a strength rating. Slip-cast ceramic remains unqualified.",
+        "Retention needs a qualified hose/clamp pair and pull-off/leak tests; integral resin barbs are not pressure-rated.",
     ]
     for i, line in enumerate(lines):
         draw.text((50, 1020 + i * 48), line, font=font(21), fill=INK)
-    image.save(output / "22-organic-pump-sections.png")
+    image.save(output / "24-pump-terminal-passages.png")
 
 
 if __name__ == "__main__":
