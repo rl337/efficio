@@ -272,7 +272,55 @@ contains only the modeled crank pinion: no unmodeled retention is invented.
 Grouping is for editorial review, not proof of fit, assembly sequence or build
 readiness. Part-specific colors (for example tire rubber) override group colors.
 
-### Larger open toy-engine proposal
+### Separate resin educational engine (current review direction)
+
+`efficio.examples.resin_engine.resin_engine_assembly()` is a standalone,
+editable first pass using the existing crank/piston motion and physical grouping
+facilities. `resin_engine_geometry()` selects the dimensions. It supersedes the
+windowed-block proposal below: manufactured liners have continuous walls; only
+display copies are cut for inspection. Existing drivetrain defaults are unchanged.
+
+The housing consists of four shared-definition flanged liners, a liner deck,
+head, two upper end bearing supports, one lower bearing frame, an outer coolant
+jacket and an oil pan. Liners have a 30 mm bore, 36 mm outside diameter and 39 mm
+flange; their running length is 48.5 mm. The 26 mm stroke leaves the piston skirt
+2 mm above the liner bottom at bottom dead center. Deck/jacket seats use 0.2 mm
+radial clearance as an editable geometric allowance, not a validated resin fit.
+Shells are 2.5 mm thick; no structural rating is implied.
+
+```bash
+PYTHONPATH=. poetry run python scripts/render_resin_engine.py --output-dir previews/resin-engine
+```
+
+The assembled, exploded and cutaway boards use actual CAD solids. Pale outlines
+represent candidate clear-resin parts without simulating refraction or optical
+quality. Colors distinguish other parts. The exploded view shows candidate
+boundaries, not a validated assembly sequence. The output JSON includes validity,
+volume, ownership, BOM and the interference result at 30 degrees.
+
+**Modeled versus proposed:** the jacket has an open-top cavity around the liners
+and two 4 mm-diameter side ports. The pan has an open-top cavity and a drain bore.
+These openings have no fittings or seals. Pump/radiator and oil pickup/pump/filter/
+feed/return routes are explicitly illustrative; there are no crank oilways,
+pressure network, fitted rings, valves or working circulation. The pan does not
+enclose the entire crankcase. Liners, jacket/deck joints, pan and shaft exits
+still require sealing decisions. Existing ball-bearing seats are retained, but
+plain versus rolling bearings and actual lubrication delivery remain undecided.
+Only the two original main bearings are listed as housing hardware. Head clamps,
+liner retention and gearbox mounts are not invented: their interfaces need design.
+
+**Casting and assembly intent:** use axial liner cores and separable external
+molds around the flange; open-top jacket/pan cavities allow removable core concepts.
+Side ports could be drilled after casting to avoid transverse mold cores. Head
+and deck can use face parting with hole pins. Split bearing supports expose the
+seat halves for assembly. None of these is completed tooling: draft, radii,
+core support, gates/vents, resin shrinkage, finishing and release need review.
+Piston bosses, wrist-pin holes and the ring groove especially need a mold/core
+strategy. Clear resin compatibility, clarity, creep and wear are unvalidated;
+metal liners, bushings or inserts may be preferable at sliding and bearing fits.
+No claim is made for printability, castability, leak tightness or load capacity.
+
+### Historical windowed toy-engine proposal (superseded)
 
 `efficio.examples.open_engine.demonstration_layout()` supplies the editable
 review configuration: four inline cylinders, 30 mm bore, 26 mm stroke, 52 mm
