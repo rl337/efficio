@@ -429,3 +429,12 @@ The relief valve gap remains explicitly open; seals and performance are untested
 See [design, limitations and bench gates](docs/external-gear-pump.md). Render with
 `PYTHONPATH=. poetry run python scripts/render_gear_pump.py` in the supported
 environment. This review does not establish a working or pressure-rated system.
+
+### Standalone water-feature pump experiment
+
+The independent [water-feature project](docs/water-feature-pump.md) provides a
+rounded wet end with blind journals and one drive-shaft exit. See
+`efficio/examples/water_feature_pump.py` for editable dimensions and
+`scripts/render_water_feature_pump.py` for real-CAD review images and STEP parts.
+Water performance is unverified; seal, bearing, retention and plumbing selections
+remain physical-build gates described in the project guide.

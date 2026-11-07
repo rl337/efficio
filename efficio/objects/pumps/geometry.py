@@ -176,3 +176,51 @@ class StrainerGeometry:
             <= 2 * self.hole_radius
         ):
             raise ValueError("screen holes overlap")
+
+
+@dataclass(frozen=True)
+class BlindSupportDimensions:
+    pump: GearPumpDimensions
+    back_web: float
+    front_web: float
+    end_gap: float
+    seal_radius: float
+    seal_depth: float
+    gasket_width: float
+    gasket_inset: float
+    gasket_depth: float
+    shaft_radius: float
+
+    def __post_init__(self) -> None:
+        errors = self.problems()
+        if errors:
+            raise ValueError(errors[0])
+
+    def problems(self) -> list[str]:
+        g = self.pump
+        values = [v for k, v in vars(self).items() if k != "pump"]
+        if not all(math.isfinite(v) and v > 0 for v in values):
+            return ["wet-end dimensions must be positive and finite"]
+        if not self.shaft_radius < g.shaft_diameter / 2 + g.journal_clearance:
+            return ["shaft consumes journal clearance"]
+        if self.back_web + self.end_gap >= g.base:
+            return ["rear blind support too shallow"]
+        if self.front_web + self.end_gap >= g.cover:
+            return ["idler blind support too shallow"]
+        if self.seal_depth >= g.cover or self.seal_radius <= g.shaft_diameter / 2:
+            return ["seal seat consumes cover journal"]
+        if self.seal_radius >= g.centres - g.shaft_diameter / 2 - g.journal_clearance:
+            return ["seal seat intersects idler support"]
+        if self.gasket_depth >= g.face_clearance + g.width:
+            return ["gasket groove consumes body"]
+        if self.gasket_inset + self.gasket_width >= g.wall / 2 - g.bolt_radius:
+            return ["gasket intersects bolt holes"]
+        if g.wall / 2 <= g.bolt_radius:
+            return ["bolt holes consume capsule wall"]
+        return []
+
+    @property
+    def bolt_points(self) -> list[tuple[float, float]]:
+        g = self.pump
+        q = (g.radius + g.wall / 2) / math.sqrt(2)
+        return [(-q, -q), (-q, q), (g.centres + q, -q), (g.centres + q, q)]
