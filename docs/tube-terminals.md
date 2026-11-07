@@ -12,7 +12,9 @@ the concrete selection lives in `examples/water_feature_pump.py`.
 - Stem OD 8.0 mm, two barb peaks OD 8.8 mm, each with a 3 mm entry taper and a
   rear shoulder. Nominal stretch over peaks is 10%; actual strain and holding
   force depend on hose grade, hardness, tolerances and temperature.
-- Hose slides 17 mm onto each terminal, stopping at |y|=21 mm. A 5 mm straight
+- Target hose engagement is 17 mm, with its cut end at |y|=21 mm. There is no
+  molded stop or depth mark; mark the hose during trial assembly and verify
+  seating before tightening. A 5 mm straight
   clamp land occupies |y|=21..26; barb tapers occupy 26..29 and 32..35 mm;
   terminal tip is at |y|=38 mm. Overall tip-to-tip span is 76 mm.
 - Select a non-cutting clamp with axial width <=5 mm and a swept outside envelope
