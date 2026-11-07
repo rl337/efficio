@@ -274,6 +274,43 @@ readiness. Part-specific colors (for example tire rubber) override group colors.
 
 ### Separate resin educational engine (current review direction)
 
+The lubrication extension is available separately as
+`efficio.examples.lubricated_engine.lubricated_engine_assembly()`, with editable
+dimensions from `lubrication_geometry()`. It keeps the original separate-parts
+example available and replaces only its shallow pan while adding two oil parts.
+
+```bash
+PYTHONPATH=. poetry run python scripts/render_lubrication.py --output-dir previews/lubrication
+```
+
+The extended pan reaches the liner base and clears the bearing-frame rails.
+It includes shaft exits, rail clearance notches, drain and service penetrations;
+these are **not sealed interfaces**. An open pickup starts 2 mm above its floor
+and reaches the external suction interface. A separate hollow gallery starts at
+the pressure interface and branches to four outlets below the liners and two
+outlets facing the main bearings. Passage bores are 3 mm, outside diameter 5 mm.
+Each network has one connected CAD bore; the missing external pump deliberately
+breaks the complete loop. The generic `TubeNetwork` models these hollow paths.
+
+This is an educational lubrication architecture, not demonstrated circulation.
+The provisional external-pump interface avoids committing to a crank-driven or
+motor-driven pump. Pump drive, filter, relief/regulation, pickup screen, fittings,
+tube supports, drain closure, shaft/end seals and pan clamps remain to be designed.
+No crankpin oilways or pressure-fed rod bearings are modeled; splash/return and
+spray arrows are explanatory, not simulation results. Existing bearing shields
+may prevent the proposed face wetting from reaching rolling elements. Bearing
+type and feed design must therefore be resolved together. Lubricant/resin/tube
+compatibility, flow demand and operating pressure are also unselected.
+
+Manufacturing options include separate tubing/fittings or a split, sealed manifold
+rather than trying to cast long curved bores with trapped cores. The CAD networks
+do not prove either process. The larger pan has end-wall notches and shaft openings;
+its parting, core removal, sealing lands, shrinkage and finishing need review.
+No claim of leak tightness, load capacity, printability or casting feasibility is
+made. Continuous cylinder walls and existing piston/rod/crank geometry are retained.
+
+The following describes the base separate-parts engine, before that extension.
+
 `efficio.examples.resin_engine.resin_engine_assembly()` is a standalone,
 editable first pass using the existing crank/piston motion and physical grouping
 facilities. `resin_engine_geometry()` selects the dimensions. It supersedes the
