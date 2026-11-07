@@ -21,7 +21,7 @@ suitable than a purchased centrifugal fountain pump; this project tests that.
 
 ## Modeled parts and interfaces
 
-- Capsule exterior 62.66 x 42.66 mm, case and cover total 24.16 mm thick.
+- Organic offset exterior 57.66 x 37.66 mm, case and cover total 24.16 mm thick.
   Figure-eight internal cavity is unchanged in principle: two 11.33 mm radius
   circles at 20 mm centers, with 11.25 mm gear tip radii.
 - Two 16T, module 1.25, 25-degree pressure-angle involute rotors, 8 mm thick,
@@ -38,8 +38,8 @@ suitable than a purchased centrifugal fountain pump; this project tests that.
   axial restraint before running. Long metal shaft surface finishes and bore
   alignment need inspection. Resin bores are temporary journal geometry;
   replace / resize for qualified water-lubricated bushings before endurance.
-- Four 3.3 mm clamp holes, 3.35 mm nominal inner/outer web at the circular
-  ends. Use bolts, washers and nuts rather than threads directly in cast resin.
+- Four 3.3 mm clamp holes in cylindrical bosses: 3.35 mm to chamber,
+  3.0 mm to boss rim before bevel and 2.40 mm after bevel. Use bolts, washers and nuts rather than threads directly in cast resin.
   Bolt length, gasket compression and torque await the chosen hardware.
 - Separate capsule gasket envelope in a 0.3 mm deep, 1.5 mm wide recess,
   0.7 mm outside the wet cavity. It is shown at **installed thickness**;
@@ -49,7 +49,7 @@ suitable than a purchased centrifugal fountain pump; this project tests that.
   selected catalogue seal or installed sealing lip. Do not order by dimensions
   alone. Supplier must approve water, speed, pressure, shaft finish, runout,
   mounting orientation and lubrication. Add positive seal retention if needed.
-- Plain 4 mm inlet/outlet bores at x=10, z=12.08, y=+/-21.33. These are
+- Plain 4 mm inlet/outlet bores at x=10, z=12.08, y=+/-15.9552 at the centerline mouth (previous capsule +/-21.33). These are
   actual connected drilling paths, **not threaded fittings or hose barbs**.
   Opposing bores enter the central mesh pocket. At driver CCW viewed from +Z,
   +Y is inlet and -Y outlet; fluid travels around the outside of both gears.
@@ -144,6 +144,14 @@ A provisional machining gate is <=0.02 mm total indicated shaft runout and <=0.0
 mm face flatness; supplier seal requirements and measured tolerance stack may be
 tighter. Budget eccentricity, thermal change and swelling against the 0.08 mm
 radial gap; CAD gaps alone are not a tolerance analysis.
+
+## Organic exterior and material-dependent wall policy
+
+See [wall policy](wall-policy.md) for the finished-wall principle, measurements,
+exceptions, profile-driven geometry and coupon/pressure validation plan.
+The 7.5 mm exterior offset follows the actual two-circle chamber union. Added
+9.3 mm bolt bosses thicken that envelope locally. Only exposed assembly ends
+have 0.6 mm conical bevels; the gasket joint and cavity are unchanged.
 
 ## Source basis and next decisions
 

@@ -76,3 +76,46 @@ def test_both_ports_reach_chamber_and_alternate_dimensions() -> None:
     for kind in ("body", "cover", "gasket", "driver_shaft", "idler_shaft"):
         result = solid(changed, kind)
         assert result.isValid() and len(result.Solids()) == 1
+
+
+def test_organic_case_preserves_cavity_joint_and_rotating_parts() -> None:
+    d = water_pump_dimensions()
+    legacy = replace(d, exterior_offset=0, boss_radius=0, bevel=0)
+    for kind in ("gasket", "driver_shaft", "idler_shaft"):
+        old, new = solid(legacy, kind), solid(d, kind)
+        assert old.cut(new).Volume() + new.cut(old).Volume() < 1e-7
+    for kind in ("body", "cover"):
+        new, old = solid(d, kind), solid(legacy, kind)
+        assert new.Volume() < old.Volume()
+        assert new.cut(old).Volume() < 1e-7  # bosses fit inside the previous capsule
+        assert new.isValid() and len(new.Solids()) == 1
+    g = GearPumpGeometry(**vars(d.pump))
+    assert solid(d, "body").intersect(g.cavity()).Volume() < 1e-7
+
+
+def test_bevels_remove_only_exposed_end_rims() -> None:
+    d = water_pump_dimensions()
+    plain = replace(d, bevel=0)
+    for kind in ("body", "cover"):
+        beveled, full = solid(d, kind), solid(plain, kind)
+        removed = full.cut(beveled)
+        assert removed.Volume() > 0
+        assert beveled.cut(full).Volume() < 1e-7
+        bounds = removed.BoundingBox()
+        if kind == "body":
+            assert bounds.zmax == pytest.approx(d.bevel, abs=1e-6)
+        else:
+            assert bounds.zmin == pytest.approx(
+                d.pump.depth + d.pump.cover - d.bevel, abs=1e-6
+            )
+
+
+def test_actual_brep_interface_distances_meet_policy() -> None:
+    from efficio.examples.water_feature_pump import water_wall_policy
+    from efficio.objects.pumps.blind_support import measured_housing_interfaces
+
+    d = water_pump_dimensions()
+    measured = measured_housing_interfaces(d)
+    assert measured["bolt_boss_ligament"] == pytest.approx(2.4)
+    assert measured["gasket_outer_waist_vertical"] == pytest.approx(2.4252154482)
+    water_wall_policy().require({**d.wall_measurements(), **measured})

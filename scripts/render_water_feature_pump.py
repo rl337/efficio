@@ -1,6 +1,7 @@
 """Render and export the standalone wet-end review from actual Efficio solids."""
 
 import argparse
+import json
 from pathlib import Path
 
 import cadquery as cq
@@ -14,6 +15,7 @@ from efficio.examples.water_feature_pump import (
     water_pump_dimensions,
 )
 from efficio.inspection import inspect_parts
+from efficio.objects.pumps.blind_support import measured_housing_interfaces
 from efficio.objects.pumps.external_gear import GearPumpGeometry
 
 
@@ -21,13 +23,22 @@ def main(output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
     d = water_pump_dimensions()
     g = d.pump
+    (output / "wall-measurements.json").write_text(
+        json.dumps(
+            {
+                "analytical_mm": d.wall_measurements(),
+                "cad_section_mm": measured_housing_interfaces(d),
+            },
+            indent=2,
+        )
+    )
     assembly = water_feature_pump()
     parts = assembly.preview_parts()
     for name, solid, _ in parts:
         cq.exporters.export(solid, str(output / (name + ".step")))
     image = canvas(
-        "Water-feature pump / independent wet-end prototype",
-        "Actual Efficio CAD | Rounded case + one exterior drive shaft | Physical pumping performance unverified",
+        "Water-feature pump / organic offset housing",
+        "Actual Efficio CAD | Constant-distance chamber envelope + cylindrical bolt bosses | Unqualified resin prototype",
         1400,
     )
     image.paste(render(parts, 840, 850), (40, 140))
@@ -40,14 +51,14 @@ def main(output: Path) -> None:
     lines = [
         "Left: assembled case. Right: cover and compressed gasket envelope lifted for review.",
         "16T + 16T shared involute rotors; module 1.25; 8 mm width; 20 mm shaft spacing.",
-        "Case: 62.66 x 42.66 x 24.16 mm. Plain 4 mm side ports need qualified hose fittings.",
+        "Case: 57.66 x 37.66 x 24.16 mm. 7.5 mm chamber offset; four 9.3 mm diameter bolt bosses.",
         "One 6 mm nominal driver exits the cover. Idler and rear driver journals end in blind pockets.",
         "12 x 4 mm seal seat is EMPTY; seal, dry coupling, axial retention and clamp hardware must be selected.",
-        "Initial aspiration: 100 mL/min at 0.3 m head. This is a test target, not a rating or prediction.",
+        "0.6 mm exposed top/bottom bevels; flat gasket joint preserved. About 20.7% less case material.",
     ]
     for i, line in enumerate(lines):
         draw.text((50, 1020 + i * 48), line, font=font(21), fill=INK)
-    image.save(output / "19-water-pump-assembly.png")
+    image.save(output / "21-organic-pump-assembly.png")
     face = inspect_parts(
         [p for p in parts if p[0] == "water_body"],
         axis="Z",
@@ -60,10 +71,17 @@ def main(output: Path) -> None:
     fluid = fluid.intersect(
         cq.Solid.makeBox(200, 200, g.base + g.width / 2, cq.Vector(-100, -100, 0))
     )
+    # Clip drilling cutters to the actual side envelope: no fictitious external tubes.
+    envelope = cq.Solid.makeCylinder(g.radius + d.exterior_offset, g.depth).fuse(
+        cq.Solid.makeCylinder(
+            g.radius + d.exterior_offset, g.depth, cq.Vector(g.centres, 0, 0)
+        )
+    )
+    fluid = fluid.intersect(envelope)
     face.append(("actual_chamber_and_port_void", fluid, (217, 235, 241)))
     axial = inspect_parts(parts, axis="Y", position=0, mode="halfspace")
     image = canvas(
-        "Water wet end / ports, blind supports and seal seat",
+        "Organic housing / chamber, bosses and wall budgets",
         "Display sections only: manufactured housing stays whole | Rotation viewed from the drive end (+Z)",
         1400,
     )
@@ -83,13 +101,13 @@ def main(output: Path) -> None:
         "Face (left): upper port INLET with left driver CCW / right idler CW; lower port OUTLET.",
         "Fluid is carried around both outer walls. Reverse rotation reverses the ports.",
         "Axial section (right): blind rear journals and idler cover pocket; only driver reaches the exterior.",
-        "Nominal tip gap 0.08 mm; each rotor face gap 0.08 mm; journal radial gap 0.05 mm.",
+        "Measured rim-to-bolt wall: 2.40 mm. Gasket-to-outer waist: 2.425 mm. Blind floors: 2.0 mm.",
         "Leaks remain possible through running gaps, pinned rotor bores, gasket and unfilled shaft-seal seat.",
-        "Bench: flooded inlet + screened reservoir; outlet open to head standpipe and visible overflow return.",
+        "Wall policy: provisional resin budget, NOT a strength rating. Slip-cast ceramic remains unqualified.",
     ]
     for i, line in enumerate(lines):
         draw.text((50, 1020 + i * 48), line, font=font(21), fill=INK)
-    image.save(output / "20-water-pump-sections.png")
+    image.save(output / "22-organic-pump-sections.png")
 
 
 if __name__ == "__main__":

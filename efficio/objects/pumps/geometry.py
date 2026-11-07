@@ -190,6 +190,9 @@ class BlindSupportDimensions:
     gasket_inset: float
     gasket_depth: float
     shaft_radius: float
+    exterior_offset: float = 0.0
+    boss_radius: float = 0.0
+    bevel: float = 0.0
 
     def __post_init__(self) -> None:
         errors = self.problems()
@@ -198,9 +201,29 @@ class BlindSupportDimensions:
 
     def problems(self) -> list[str]:
         g = self.pump
-        values = [v for k, v in vars(self).items() if k != "pump"]
+        values = [
+            v
+            for k, v in vars(self).items()
+            if k not in {"pump", "exterior_offset", "boss_radius", "bevel"}
+        ]
         if not all(math.isfinite(v) and v > 0 for v in values):
             return ["wet-end dimensions must be positive and finite"]
+        if not all(
+            math.isfinite(v) and v >= 0
+            for v in (self.exterior_offset, self.boss_radius, self.bevel)
+        ):
+            return ["exterior offsets must be finite and nonnegative"]
+        if self.exterior_offset:
+            if self.boss_radius <= g.bolt_radius + self.bevel:
+                return ["beveled boss consumes bolt web"]
+            if self.exterior_offset <= self.bevel or self.bevel >= min(g.base, g.cover):
+                return ["bevel consumes wall or end plate"]
+            if (g.radius + self.exterior_offset) ** 2 <= (g.centres / 2) ** 2:
+                return ["offset envelope does not enclose waist"]
+            if min(self.wall_measurements().values()) <= 0:
+                return ["organic exterior consumes a functional interface"]
+        elif self.boss_radius or self.bevel:
+            return ["bosses and bevel require an organic offset"]
         if not self.shaft_radius < g.shaft_diameter / 2 + g.journal_clearance:
             return ["shaft consumes journal clearance"]
         if self.back_web + self.end_gap >= g.base:
@@ -224,3 +247,30 @@ class BlindSupportDimensions:
         g = self.pump
         q = (g.radius + g.wall / 2) / math.sqrt(2)
         return [(-q, -q), (-q, q), (g.centres + q, -q), (g.centres + q, q)]
+
+    def wall_measurements(self) -> dict[str, float]:
+        """Analytical feature bounds for the organic envelope; not global FEA.
+
+        Waist uses vertical clearance to the retained capsule gasket (a local
+        thickness, not a global shortest-distance claim). Boss additions only
+        increase the base offset envelope; outer end bevel is bounded by its
+        specified radial inset. Intended openings and mating contacts excluded.
+        """
+        g = self.pump
+        radius = g.radius + self.exterior_offset
+        waist = math.sqrt(max(0.0, radius * radius - (g.centres / 2) ** 2))
+        return {
+            "offset_side_wall": self.exterior_offset,
+            "beveled_offset_bound": self.exterior_offset - self.bevel,
+            "bolt_boss_ligament": self.boss_radius - g.bolt_radius - self.bevel,
+            "bolt_to_chamber": g.wall / 2 - g.bolt_radius,
+            "rear_blind_floor": self.back_web,
+            "idler_cover_floor": self.front_web,
+            "seal_seat_floor": g.cover - self.seal_depth,
+            "port_roof_to_joint": g.width / 2 + g.face_clearance - g.port_radius,
+            "gasket_outer_waist_vertical": waist
+            - g.radius
+            - self.gasket_inset
+            - self.gasket_width,
+            "gasket_inner_land": self.gasket_inset,
+        }

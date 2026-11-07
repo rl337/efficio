@@ -1,25 +1,37 @@
 """Independent water-feature wet-end experiment; no engine dependency."""
 
+import math
+from typing import Optional
+
 from efficio.objects.assembly import Assembly, HardwareItem, PartSpec
 from efficio.objects.fits import Process
 from efficio.objects.pumps.blind_support import BlindSupportPart
 from efficio.objects.pumps.external_gear import GearPumpGeometry, PumpPart
 from efficio.objects.pumps.geometry import BlindSupportDimensions
+from efficio.objects.walls import MaterialWallProfile, WallPolicy
 
 
-def water_pump_dimensions() -> BlindSupportDimensions:
+def water_pump_dimensions(
+    profile: Optional[MaterialWallProfile] = None,
+) -> BlindSupportDimensions:
+    policy = (profile or resin_water_profile()).finished_policy()
+    if policy.process != Process.RESIN_CAST:
+        raise ValueError(
+            "this wet-end builder has only a provisional resin process route"
+        )
+    minimum = policy.minimum_mm
     # Provisional machining dimensions, not an as-cast tolerance promise.
     g = GearPumpGeometry(
         module=1.25,
         teeth=16,
-        width=8,
+        width=max(8.0, 2 * (minimum + 2 - 0.08)),
         shaft_diameter=6,
         tip_clearance=0.08,
         face_clearance=0.08,
         journal_clearance=0.04,
-        wall=10,
-        base=8,
-        cover=8,
+        wall=max(10.0, 2 * (minimum + 1.65)),
+        base=6 + max(2.0, minimum),
+        cover=6 + max(2.0, minimum),
         port_radius=2,
         seal_pocket_radius=4,
         collar_radius=5,
@@ -27,10 +39,10 @@ def water_pump_dimensions() -> BlindSupportDimensions:
         rotor_pin_diameter=1.5,
         rotor_pin_length=7.5,
     )
-    return BlindSupportDimensions(
+    dimensions = BlindSupportDimensions(
         g,
-        back_web=2,
-        front_web=2,
+        back_web=max(2.0, minimum),
+        front_web=max(2.0, minimum),
         end_gap=0.03,
         seal_radius=6,
         seal_depth=4,
@@ -38,11 +50,57 @@ def water_pump_dimensions() -> BlindSupportDimensions:
         gasket_inset=0.7,
         gasket_depth=0.3,
         shaft_radius=2.99,
+        exterior_offset=max(
+            7.5, math.hypot(g.radius + 0.7 + 1.5 + minimum, g.centres / 2) - g.radius
+        ),
+        boss_radius=g.bolt_radius + max(3.0, minimum + 0.6),
+        bevel=0.6,
+    )
+
+    policy.require(dimensions.wall_measurements())
+    return dimensions
+
+
+def water_wall_policy() -> WallPolicy:
+    return WallPolicy(
+        material="water-compatible casting resin: grade and cure unselected",
+        process=Process.RESIN_CAST,
+        environment="room-temperature water; supervised low-head experiment",
+        minimum_mm=2.0,
+        basis="Provisional geometry budget preserving existing 2 mm blind floors; not a strength-derived minimum. Coupon, clamp and hydrostatic validation required.",
+        required_features=(
+            "offset_side_wall",
+            "beveled_offset_bound",
+            "bolt_boss_ligament",
+            "bolt_to_chamber",
+            "rear_blind_floor",
+            "idler_cover_floor",
+            "seal_seat_floor",
+            "port_roof_to_joint",
+            "gasket_outer_waist_vertical",
+            "gasket_inner_land",
+        ),
+        feature_limits=(("gasket_inner_land", 0.6),),
     )
 
 
-def water_feature_pump(angle: float = 0.0) -> Assembly:
-    d = water_pump_dimensions()
+def resin_water_profile() -> MaterialWallProfile:
+    return MaterialWallProfile(
+        "Resin wet-end experiment", Process.RESIN_CAST, water_wall_policy()
+    )
+
+
+def slip_cast_water_profile() -> MaterialWallProfile:
+    # No clay body, firing schedule, shrinkage or pump-service qualification.
+    return MaterialWallProfile(
+        "Slip-cast ceramic: unsupported for this pump", Process.SLIP_CAST
+    )
+
+
+def water_feature_pump(
+    angle: float = 0.0, profile: Optional[MaterialWallProfile] = None
+) -> Assembly:
+    d = water_pump_dimensions(profile)
     g = GearPumpGeometry(**vars(d.pump))
     assembly = Assembly("water_feature_wet_end")
     for kind, color, process, material in [

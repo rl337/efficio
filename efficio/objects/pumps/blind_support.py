@@ -27,6 +27,28 @@ def capsule(centres: float, radius: float, z0: float, z1: float) -> cq.Shape:
     )
 
 
+def beveled_cylinder(
+    radius: float,
+    z0: float,
+    z1: float,
+    bevel: float,
+    bottom: bool,
+    x: float = 0,
+    y: float = 0,
+) -> cq.Shape:
+    """45-degree exposed-end rim; build before union to avoid cusp chamfer failures."""
+    if bevel == 0:
+        return cylinder(radius, z0, z1, x, y)
+    low, high = (z0 + bevel, z1) if bottom else (z0, z1 - bevel)
+    cone = cq.Solid.makeCone(
+        radius - bevel if bottom else radius,
+        radius if bottom else radius - bevel,
+        bevel,
+        cq.Vector(x, y, z0 if bottom else z1 - bevel),
+    )
+    return cylinder(radius, low, high, x, y).fuse(cone).clean()
+
+
 class BlindSupportPart(EfficioObject):
     """Body, cover, compressed gasket envelope or pinned ground-rod shaft.
 
@@ -72,7 +94,30 @@ class BlindSupportPart(EfficioObject):
         if self.kind == "gasket":
             return wrap(cq.Workplane("XY").newObject([gasket]))
         z0, z1 = (0.0, g.depth) if self.kind == "body" else (g.depth, top)
-        solid = capsule(g.centres, g.half_height, z0, z1)
+        if d.exterior_offset:
+            bottom = self.kind == "body"
+            solid = (
+                beveled_cylinder(g.radius + d.exterior_offset, z0, z1, d.bevel, bottom)
+                .fuse(
+                    beveled_cylinder(
+                        g.radius + d.exterior_offset,
+                        z0,
+                        z1,
+                        d.bevel,
+                        bottom,
+                        x=g.centres,
+                    ),
+                    *(
+                        beveled_cylinder(
+                            d.boss_radius, z0, z1, d.bevel, bottom, x=x, y=y
+                        )
+                        for x, y in d.bolt_points
+                    ),
+                )
+                .clean()
+            )
+        else:
+            solid = capsule(g.centres, g.half_height, z0, z1)
         if self.kind == "body":
             solid = (
                 solid.cut(g.cavity())
@@ -107,3 +152,42 @@ class BlindSupportPart(EfficioObject):
         for x, y in d.bolt_points:
             solid = solid.cut(cylinder(g.bolt_radius, z0 - 0.01, z1 + 0.01, x=x, y=y))
         return wrap(cq.Workplane("XY").newObject([solid.clean()]))
+
+
+def measured_housing_interfaces(d: BlindSupportDimensions) -> dict[str, float]:
+    """Exact BRep wire distances at selected critical sections, in mm.
+
+    This is not a global minimum-wall search: ports/openings, 3D junction
+    stresses, permeability, tolerances and surface defects need other checks.
+    """
+    parts: dict[str, cq.Shape] = {}
+    for kind in ("body", "cover", "gasket"):
+        result = BlindSupportPart(d, kind).shape()
+        assert result is not None
+        value = result.workplane().val()
+        assert isinstance(value, cq.Shape)
+        parts[kind] = value
+
+    def outer(solid: cq.Shape, side: str) -> cq.Wire:
+        faces = cq.Workplane("XY").newObject([solid]).faces(side).vals()
+        wires = [f.outerWire() for f in faces if isinstance(f, cq.Face)]
+        return max(wires, key=lambda w: w.BoundingBox().xlen)
+
+    measured = {
+        "gasket_outer_waist_vertical": outer(parts["body"], ">Z").distance(
+            outer(parts["gasket"], ">Z")
+        )
+    }
+    distances = []
+    for kind, side, z in (
+        ("body", "<Z", 0.0),
+        ("cover", ">Z", d.pump.depth + d.pump.cover),
+    ):
+        rim = outer(parts[kind], side)
+        for x, y in d.bolt_points:
+            hole = cq.Wire.makeCircle(
+                d.pump.bolt_radius, cq.Vector(x, y, z), cq.Vector(0, 0, 1)
+            )
+            distances.append(rim.distance(hole))
+    measured["bolt_boss_ligament"] = min(distances)
+    return measured
