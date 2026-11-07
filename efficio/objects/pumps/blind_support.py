@@ -8,6 +8,7 @@ import cadquery as cq
 from efficio.objects.base import EfficioObject
 from efficio.objects.connectors import HoseBarb, HoseBarbDimensions
 from efficio.objects.fits import cross_pin_offset
+from efficio.objects.gaskets import GasketFace, KeepOut, Opening, OpeningRole
 from efficio.objects.profiles import wrap, x_cylinder
 from efficio.objects.pumps.external_gear import GearPumpGeometry
 from efficio.objects.pumps.geometry import BlindSupportDimensions
@@ -81,6 +82,65 @@ class BlindSupportPart(EfficioObject):
             raise ValueError(
                 "terminal requires positive placement and a matching pump bore"
             )
+
+    def gasket_faces(self) -> dict[str, GasketFace]:
+        if self.kind != "body":
+            return {}
+        shape = self.shape()
+        assert shape is not None
+        solid = cast(cq.Shape, shape.workplane().val())
+        g, d = self.d.pump, self.d
+        z = g.depth - d.gasket_depth
+        faces = [
+            f
+            for f in solid.Faces()
+            if f.geomType() == "PLANE"
+            and abs(f.Center().z - z) < 1e-7
+            and abs(f.normalAt().z) > 0.999999
+        ]
+        if len(faces) != 1 or len(faces[0].innerWires()) != 1:
+            raise ValueError(
+                "pump gasket recess face is ambiguous; explicit remapping required"
+            )
+        face = faces[0]
+        wet = GearPumpGeometry(**vars(g)).cavity()
+        swept = cylinder(
+            g.tip_radius, g.base + g.face_clearance, g.depth - g.face_clearance
+        ).fuse(
+            cylinder(
+                g.tip_radius,
+                g.base + g.face_clearance,
+                g.depth - g.face_clearance,
+                x=g.centres,
+            )
+        )
+        return {
+            "cover_seal": GasketFace(
+                face,
+                (
+                    Opening(
+                        "enclosed_wet_region",
+                        face.innerWires()[0],
+                        OpeningRole.WET_CAVITY,
+                    ),
+                ),
+                (
+                    KeepOut("wet cavity", wet),
+                    KeepOut("full rotor swept volumes", swept),
+                ),
+                cq.Vector(0, 0, 1),
+                d.gasket_depth,
+                "Existing flat body/cover lands close at z=%.6g; no new stops generated"
+                % g.depth,
+                tuple(
+                    f
+                    for f in solid.Faces()
+                    if f.geomType() == "PLANE"
+                    and abs(f.Center().z - g.depth) < 1e-7
+                    and abs(f.normalAt().z) > 0.999999
+                ),
+            )
+        }
 
     def shape(self) -> Optional[Shape]:
         d = self.d
