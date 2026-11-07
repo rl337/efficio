@@ -93,3 +93,65 @@ use a product-specific interference design; their pressure claims are not applie
 here. [Saint-Gobain's tubing selection chart](https://www.biopharm.saint-gobain.com/sustainable-tubing)
 distinguishes vacuum suitability by tubing construction, reinforcing that hose
 material name alone is insufficient.
+
+## Supported roots and named hose sizes
+
+The default terminal now has a smooth revolved flare with a 13 mm base diameter
+and 8 mm axial length, reducing to the 8 mm stem. An analytic cone with a 1 mm rounded neck
+blends into the cylindrical stem, avoiding a sharp cone-to-stem corner.
+The base starts inside the case; only its exposed portion is visible. The
+added flare is relieved above z=16.11, giving 0.05 mm nominal clearance beneath
+the cover joint. This upper relief makes the root a saddle-like support rather
+than a complete circular cone where it meets the case. The original stem and
+barbs are not shaved. Gasket, cover, bore and clamp land remain unchanged.
+
+The smooth flare was chosen over a thin flat disk to spread the transition over
+an axial length without adding a flange edge. This is a design rationale, not
+a proven stress reduction. The root is not tangent to every point of the curved
+case intersection and its upper relief has edges. It still requires fracture,
+clamp, hose-bending and cyclic load tests. The larger cast section may change
+cure shrinkage and bubble formation; use the same intended resin/cure and split
+mold strategy in coupons. No mold draft, shrinkage scale or mold release sequence
+has been qualified. The flare ends at |y|=20, 1 mm before the hose engagement
+target at |y|=21, preserving the straight clamp land and removal access.
+
+`CommonHoseSize` defines **nominal hose ID** choices. `HoseSize` also holds an
+optional documented OD and source/service notes. Generic choices intentionally
+leave OD unknown. `HoseBarbDimensions.from_size(...)` requires a hose-wall value
+when OD is unknown, rejects a wall value conflicting with a documented OD, and
+keeps barb height separate from ID. Inch conversion uses exactly 25.4 mm/inch;
+values are not rounded to neighboring metric sizes:
+
+| Preset family | Nominal hose ID, mm |
+|---|---|
+| Metric | 4, 6, 8, 10, 12 |
+| Imperial 1/8, 3/16, 1/4 | 3.175, 4.7625, 6.35 |
+| Imperial 5/16, 3/8, 1/2 | 7.9375, 9.525, 12.7 |
+
+Manufacturer-grounded aquarium presets are separate:
+
+- [Danner aquarium airline / check-valve interface](https://dannermfg.com/products/tubing-check-valves):
+  nominal 3/16-inch ID. Stored dimensional conversion is 4.7625 mm; OD is unknown.
+- [Tetra AH 50-400 hose](https://www.tetra.net/en-eu/products/tetra-ah-50-400-air-pump-hose):
+  4 mm ID / 6 mm OD. This is not equated to literal 3/16-inch ID.
+
+These are airline descriptors, not pressure/suction-qualified water hoses or
+measured Tetra Whisper connector drawings. Hose ID is not a barb crest diameter.
+Actual samples and tolerances must be checked; no cross-brand fit is asserted.
+
+For this water pump use `water_feature_pump(hose_size=CommonHoseSize.METRIC_8_MM_ID)`
+(or omit the size to retain material-driven default sizing). Smaller choices,
+including both airline presets and even 5/16 inch, fail the 4 mm bore plus 2 mm
+radial-wall budget and raise an explicit error. The 3/8-inch and 12 mm variants
+are geometry-tested; larger stems lower their port axes to clear the cover while
+keeping the same chamber. A 1/2-inch hose requires a taller chamber or different
+port layout and is rejected. Generic connectors can still use all the named
+sizes with separately chosen bore, wall and layout parameters. Geometric fit
+does not qualify their material or service.
+
+For physical comparison, make otherwise identical straight-root and supported-root
+coupons, at least five of each, using the actual resin and hose/clamp pair.
+Compare insertion damage, axial pull, transverse load versus deflection, failure
+location and repeated bending before/after water conditioning. Support the hose
+independently during use. Re-run leak and endurance tests after loading; do not
+claim improvement from added CAD volume alone.

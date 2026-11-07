@@ -64,11 +64,15 @@ class BlindSupportPart(EfficioObject):
         kind: str,
         terminal: Optional[HoseBarbDimensions] = None,
         terminal_start: float = 0.0,
+        root_cover_clearance: float = 0.05,
     ):
         if kind not in {"body", "cover", "gasket", "driver_shaft", "idler_shaft"}:
             raise ValueError("unknown blind-support part")
         self.d, self.kind = dimensions, kind
         self.terminal, self.terminal_start = terminal, terminal_start
+        self.root_cover_clearance = root_cover_clearance
+        if not math.isfinite(root_cover_clearance) or root_cover_clearance <= 0:
+            raise ValueError("root cover clearance must be positive and finite")
         if terminal is not None and (
             not math.isfinite(terminal_start)
             or terminal_start <= 0
@@ -135,19 +139,28 @@ class BlindSupportPart(EfficioObject):
             )
         else:
             solid = capsule(g.centres, g.half_height, z0, z1)
+        roots: list[cq.Shape] = []
         if self.kind == "body" and self.terminal is not None:
             terminal = HoseBarb(self.terminal)
             for sign in (-1, 1):
-                solid = solid.fuse(self.place_terminal(terminal.envelope(), sign))
-            for sign in (-1, 1):
-                solid = solid.cut(self.place_terminal(terminal.bore(), sign))
+                solid = solid.fuse(self.place_terminal(terminal.barbed_stem(), sign))
+                root = terminal.root_envelope()
+                if root is not None:
+                    # Relieve only the added flare above the body's joint plane;
+                    # preserve original stem/barbs and removable cover/gasket.
+                    placed = self.place_terminal(root, sign)
+                    bounds = placed.BoundingBox()
+                    keep = cq.Solid.makeBox(
+                        bounds.xlen + 2,
+                        bounds.ylen + 2,
+                        g.depth - self.root_cover_clearance - bounds.zmin + 1,
+                        cq.Vector(bounds.xmin - 1, bounds.ymin - 1, bounds.zmin - 1),
+                    )
+                    roots.append(placed.intersect(keep))
         if self.kind == "body":
-            solid = (
-                solid.cut(g.cavity())
-                .cut(g.port_void(-1))
-                .cut(g.port_void(1))
-                .cut(gasket)
-            )
+            if self.terminal is None:
+                solid = solid.cut(g.port_void(-1)).cut(g.port_void(1))
+            solid = solid.cut(g.cavity()).cut(gasket)
             for x in (0.0, g.centres):
                 solid = solid.cut(
                     cylinder(
@@ -174,6 +187,34 @@ class BlindSupportPart(EfficioObject):
             solid = solid.cut(cylinder(d.seal_radius, top - d.seal_depth, top + 0.01))
         for x, y in d.bolt_points:
             solid = solid.cut(cylinder(g.bolt_radius, z0 - 0.01, z1 + 0.01, x=x, y=y))
+        for root in roots:
+            # Add the relieved support to the already machined base body, keeping
+            # its existing faces intact. Cut every functional void from support.
+            root = root.cut(g.cavity()).cut(gasket)
+            assert self.terminal is not None
+            for x in (0.0, g.centres):
+                root = root.cut(
+                    cylinder(
+                        g.shaft_diameter / 2 + g.journal_clearance,
+                        d.back_web,
+                        g.base + 0.01,
+                        x=x,
+                    )
+                )
+            for x, y in d.bolt_points:
+                root = root.cut(cylinder(g.bolt_radius, z0 - 0.01, z1 + 0.01, x=x, y=y))
+            solid = solid.fuse(root)
+        if self.kind == "body" and self.terminal is not None:
+            # One canonical drilling avoids coincident cylindrical seam faces
+            # from overlapping side and terminal cutters during support fusion.
+            reach = self.terminal_start + self.terminal.length + 0.01
+            drilling = cq.Solid.makeCylinder(
+                g.port_radius,
+                2 * reach,
+                cq.Vector(g.centres / 2, -reach, g.port(1)[2]),
+                cq.Vector(0, 1, 0),
+            )
+            solid = solid.cut(drilling)
         return wrap(cq.Workplane("XY").newObject([solid.clean()]))
 
     def place_terminal(self, shape: cq.Shape, sign: int) -> cq.Shape:

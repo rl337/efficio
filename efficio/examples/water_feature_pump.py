@@ -5,7 +5,7 @@ from dataclasses import replace
 from typing import Optional
 
 from efficio.objects.assembly import Assembly, HardwareItem, PartSpec
-from efficio.objects.connectors import HoseBarbDimensions
+from efficio.objects.connectors import CommonHoseSize, HoseBarbDimensions, HoseSize
 from efficio.objects.fits import Process
 from efficio.objects.pumps.blind_support import BlindSupportPart
 from efficio.objects.pumps.external_gear import GearPumpGeometry, PumpPart
@@ -15,6 +15,7 @@ from efficio.objects.walls import MaterialWallProfile, WallPolicy
 
 def water_pump_dimensions(
     profile: Optional[MaterialWallProfile] = None,
+    hose_size: Optional[CommonHoseSize] = None,
 ) -> BlindSupportDimensions:
     policy = (profile or resin_water_profile()).finished_policy()
     if policy.process != Process.RESIN_CAST:
@@ -42,6 +43,17 @@ def water_pump_dimensions(
         rotor_pin_diameter=1.5,
         rotor_pin_length=7.5,
     )
+    if hose_size is not None:
+        # A larger stem needs a lower centerline to clear the removable cover.
+        required_drop = max(
+            g.port_drop,
+            hose_size.value.id_mm / 2 - g.width / 2 - g.face_clearance + 0.15,
+        )
+        if required_drop >= g.width / 2 + g.face_clearance - g.port_radius:
+            raise ValueError(
+                "hose size requires a taller chamber or a different port layout"
+            )
+        g = replace(g, port_drop=required_drop)
     dimensions = BlindSupportDimensions(
         g,
         back_web=max(2.0, minimum),
@@ -100,19 +112,36 @@ def slip_cast_water_profile() -> MaterialWallProfile:
     )
 
 
-def water_hose_terminal(d: BlindSupportDimensions) -> HoseBarbDimensions:
-    terminal = HoseBarbDimensions(
+def water_hose_terminal(
+    d: BlindSupportDimensions,
+    size: Optional[CommonHoseSize] = None,
+    supported: bool = True,
+) -> HoseBarbDimensions:
+    selected_id = (
+        size.value.id_mm if size is not None else 2 * (d.pump.port_radius + d.back_web)
+    )
+    if selected_id / 2 - d.pump.port_radius < d.back_web - 1e-9:
+        raise ValueError(
+            "selected hose ID cannot retain the pump bore and finished-wall budget"
+        )
+    terminal = HoseBarbDimensions.from_size(
+        (
+            size.value
+            if size is not None
+            else HoseSize("material-sized pump hose ID", selected_id)
+        ),
         bore_radius=d.pump.port_radius,
-        stem_radius=d.pump.port_radius + d.back_web,
+        minimum_wall=d.back_web,
         length=26.0,
-        barb_radius=d.pump.port_radius + d.back_web + 0.4,
+        barb_height=0.4,
         barb_length=3.0,
         barb_starts=(14.0, 20.0),
-        hose_id=2 * (d.pump.port_radius + d.back_web),
         hose_wall=2.0,
         hose_start=9.0,
         clamp_length=5.0,
         clamp_clearance=1.0,
+        root_extra_radius=2.5 if supported else 0.0,
+        root_length=8.0 if supported else 0.0,
     )
     replace(water_wall_policy(), minimum_mm=d.back_web).require(
         {**d.wall_measurements(), "terminal_wall": terminal.finished_wall}
@@ -121,11 +150,14 @@ def water_hose_terminal(d: BlindSupportDimensions) -> HoseBarbDimensions:
 
 
 def water_feature_pump(
-    angle: float = 0.0, profile: Optional[MaterialWallProfile] = None
+    angle: float = 0.0,
+    profile: Optional[MaterialWallProfile] = None,
+    hose_size: Optional[CommonHoseSize] = None,
+    supported_roots: bool = True,
 ) -> Assembly:
-    d = water_pump_dimensions(profile)
+    d = water_pump_dimensions(profile, hose_size)
     g = GearPumpGeometry(**vars(d.pump))
-    hose = water_hose_terminal(d)
+    hose = water_hose_terminal(d, hose_size, supported_roots)
     assembly = Assembly("water_feature_wet_end")
     for kind, color, process, material in [
         (
@@ -162,9 +194,7 @@ def water_feature_pump(
         child = assembly.add_subassembly(Assembly(kind, color))
         spec = PartSpec(
             "water_" + kind,
-            BlindSupportPart(
-                d, kind, water_hose_terminal(d) if kind == "body" else None, 12.0
-            ),
+            BlindSupportPart(d, kind, hose if kind == "body" else None, 12.0),
             (process,),
             material,
         )
