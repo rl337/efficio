@@ -121,7 +121,7 @@ def main(output: Path) -> None:
     section_view = preview.View("section", (1, 0, 0), (0, 0, 1))
     board = canvas(
         "Gasket section / free and installed states",
-        "True CAD section at x=0 | Same scale | Orange: free state; green: estimated installed state",
+        "True CAD section at x=0 | Magnified views | Orange: free state; green: estimated installed state",
         1150,
     )
     for x, gasket, with_cover in [
