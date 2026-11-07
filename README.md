@@ -419,3 +419,13 @@ production mold, suspension fixture, segmented plaster mold, silicone demolding
 cuts or process qualification. Valid CAD solids and printer bounds do not prove
 release, leak tightness, fastener strength or casting quality. Review the report's
 manufacturing limitations before fabrication.
+
+### Crank-driven educational oil pump
+
+`efficio.examples.pumped_engine.pumped_engine_assembly()` adds a reusable external
+gear-pump candidate, crank spur drive, mounting adapter, coarse serviceable
+strainer and actual hollow connections to the resin-engine lubrication review.
+The relief valve gap remains explicitly open; seals and performance are untested.
+See [design, limitations and bench gates](docs/external-gear-pump.md). Render with
+`PYTHONPATH=. poetry run python scripts/render_gear_pump.py` in the supported
+environment. This review does not establish a working or pressure-rated system.
