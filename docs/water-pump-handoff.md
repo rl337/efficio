@@ -2,20 +2,22 @@
 
 Paused deliberately on 2026-11-08. The project is an editable CAD and bench-test
 candidate, **not an operational, leak-tight or fabrication-released pump**.
-The user is switching topics; there is no outstanding implementation running.
-Do not infer authorization to publish, merge or order components from this handoff.
+The user paused the design work and subsequently requested integration into `main`.
+This handoff does not authorize ordering components or future publication actions.
 
 ## Branch and source of truth
 
-- Local branch: `review/drivetrain-physical-groupings`.
+- Original review branch: `review/drivetrain-physical-groupings`. Resume from
+  `main` after its integration PR; the review commits remain in history.
 - Last implementation commit at handoff: `cd567b67d7dcef0c141833f1bf587ccca9a2e8ed`
   (generic gasket defaults). The handoff documentation is committed after it.
 - Working checkout used here:
   `/Users/richard/Documents/Codex/2026-11-06/task/efficio-reconcile`.
 - This branch also contains earlier drivetrain grouping, educational resin engine
   and lubrication work. Preserve it; do not replace the branch with only the pump.
-- No publication or merge was performed for this review work. Local commits are
-  not a remote backup. Confirm authorization before publishing the branch.
+- The review was local at the original pause. Richard subsequently explicitly
+  authorized publishing and merging the complete branch into `main`; verify the
+  integration PR and current remote head when resuming.
 
 ## Which model to reopen
 
@@ -155,7 +157,7 @@ not claim another execution of the full suite.
 
 ## Resume commands and review files
 
-Start with `git status` and this document on the existing branch. Preserve any
+Start with `git status`, current `main`, and this document. Preserve any
 new work found later. Use the Docker or local-venv workflow in `AGENTS.md`; do
 not install CAD dependencies into the global Python environment.
 
