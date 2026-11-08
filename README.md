@@ -432,6 +432,9 @@ environment. This review does not establish a working or pressure-rated system.
 
 ### Standalone water-feature pump experiment
 
+**Resume here:** [pump handoff, verified state and prioritized next steps](docs/water-pump-handoff.md).
+The latest full-face gasket review is separate from the earlier complete wet-end assembly.
+
 The independent [water-feature project](docs/water-feature-pump.md) provides a
 rounded wet end with blind journals and one drive-shaft exit. See
 `efficio/examples/water_feature_pump.py` for editable dimensions and

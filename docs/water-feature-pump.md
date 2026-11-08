@@ -1,5 +1,9 @@
 # Standalone water-feature gear pump experiment
 
+Start with the [current handoff](water-pump-handoff.md) when resuming. This guide
+also documents the earlier complete wet-end assembly; the latest full-face
+gasket/body/cover review is identified separately in the handoff.
+
 This side project is independent of the engine oil circuit. Build the editable
 wet end with `efficio.examples.water_feature_pump.water_feature_pump(angle)`.
 `water_pump_dimensions()` is the concrete parameter entry point; shared
