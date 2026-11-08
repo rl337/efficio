@@ -185,7 +185,10 @@ class GasketFace:
             "arc" if parameters.round_to_width else "intersection"
         )
         flat = footprint(
-            self.face, parameters.outer_inset, parameters.inner_inset, kind
+            self.face,
+            parameters.resolved_outer_inset,
+            parameters.resolved_inner_inset,
+            kind,
         )
         rounded_area_loss = 0.0
         from efficio.objects.gaskets.width import measure_band_width
@@ -228,7 +231,9 @@ class GasketFace:
         if target_area >= self.face.Area():
             raise ValueError("gasket volume overfills the declared recess")
         # Uniform outward edge motion is only a volume-conserving estimate.
-        lo, hi = 0.0, max(parameters.outer_inset, parameters.inner_inset)
+        lo, hi = 0.0, max(
+            parameters.resolved_outer_inset, parameters.resolved_inner_inset
+        )
         if hi == 0:
             raise ValueError("compression requires lateral room")
         if footprint(flat, -hi, -hi, kind).Area() < target_area:

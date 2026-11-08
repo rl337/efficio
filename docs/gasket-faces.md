@@ -136,3 +136,25 @@ removed area. Its minimum width is a construction lower bound, not the earlier
 primitive-pair distance measurement. Default width behavior is unchanged.
 See [full-face pump gasket](full-face-pump-gasket.md) for geometry, limitations,
 residual internal leakage and the coordinated deeper recess/port changes.
+
+## Generic sizing defaults
+
+`GasketParameters()` now means **2 mm free thickness**, **0.4 mm common inset**
+and **1 mm minimum in-plane band width**. All are configurable. `inset` is
+keyword-only; omitted `outer_inset` and `inner_inset` independently inherit it.
+An explicit override, including zero, wins for that boundary. The
+`resolved_outer_inset` and `resolved_inner_inset` properties expose effective
+values. Existing positional calls retain their original meaning.
+
+```python
+GasketParameters()  # 2 mm free, 0.4 mm each side, 1 mm minimum band
+GasketParameters(inset=0.6, inner_inset=0.2, free_thickness=1.2)
+```
+
+These defaults do not select an installed height. `GasketFace.closed_height`
+and its closure declaration remain mandatory; no second mating face is inferred
+or required. Compression/spread and keep-out checks run only from that deliberate
+height and supplied geometry. Invalid or incompatible configurations still fail.
+The full-face pump explicitly retains its 1.05 mm free / 1 mm closed settings;
+using the generic 2 mm free default there overfills the recess and is rejected.
+Generic defaults are not material qualification or recommended compression ratios.
