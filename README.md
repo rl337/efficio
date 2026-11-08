@@ -241,6 +241,150 @@ has a read-only home directory, optional runtime cache warnings do not imply
 failed checks. Bootstrap keeps its Poetry cache/config in the temporary tool directory;
 set `POETRY_CACHE_DIR` to a writable persistent cache to reuse downloads.
 
+### Drivetrain physical groupings
+
+The existing Engine, Gearbox, Differential, Axles and Wheels navigation sections
+now contain physical review groups. Engine contains Housing, Crankshaft, one
+Piston and rod group per cylinder, Flywheel and Engine mounts. Gearbox contains
+Engine output adapter, Gearbox support, Input shaft and Idler shaft. Differential
+contains Carrier and Internal gears and pins; Axles and Wheels each have separate
+left and right groups. The gearbox plates support the differential bearings:
+these sections do not imply independently removable cartridges.
+
+`Assembly.group_instances()` transfers existing occurrences into a child while
+retaining their solid objects, world placements and shared `PartSpec` identities.
+Each occurrence and hardware quantity has one owner. `bom_rows()` reports local
+quantities at each owning assembly path; `bom_totals()` rolls these up for the
+selected subtree. Repeated wheel definitions therefore produce one part per side
+and two in the root total. Conflicting same-name definitions are rejected; reuse
+the same `PartSpec` when the part really is shared. Ambiguous assembly or occurrence
+names require a full path. Use `all_instances()` to traverse nested groups.
+
+Generate four color-coded review boards and hierarchy/BOM JSON in Docker:
+
+```bash
+PYTHONPATH=. poetry run python scripts/render_drivetrain_groups.py --output-dir previews/grouping-review
+```
+
+These views preserve existing geometry; the isolated panels use independent
+scales. Bearings and most fasteners remain BOM-only. The engine output adapter
+contains only the modeled crank pinion: no unmodeled retention is invented.
+Grouping is for editorial review, not proof of fit, assembly sequence or build
+readiness. Part-specific colors (for example tire rubber) override group colors.
+
+### Separate resin educational engine (current review direction)
+
+The lubrication extension is available separately as
+`efficio.examples.lubricated_engine.lubricated_engine_assembly()`, with editable
+dimensions from `lubrication_geometry()`. It keeps the original separate-parts
+example available and replaces only its shallow pan while adding two oil parts.
+
+```bash
+PYTHONPATH=. poetry run python scripts/render_lubrication.py --output-dir previews/lubrication
+```
+
+The extended pan reaches the liner base and clears the bearing-frame rails.
+It includes shaft exits, rail clearance notches, drain and service penetrations;
+these are **not sealed interfaces**. An open pickup starts 2 mm above its floor
+and reaches the external suction interface. A separate hollow gallery starts at
+the pressure interface and branches to four outlets below the liners and two
+outlets facing the main bearings. Passage bores are 3 mm, outside diameter 5 mm.
+Each network has one connected CAD bore; the missing external pump deliberately
+breaks the complete loop. The generic `TubeNetwork` models these hollow paths.
+
+This is an educational lubrication architecture, not demonstrated circulation.
+The provisional external-pump interface avoids committing to a crank-driven or
+motor-driven pump. Pump drive, filter, relief/regulation, pickup screen, fittings,
+tube supports, drain closure, shaft/end seals and pan clamps remain to be designed.
+No crankpin oilways or pressure-fed rod bearings are modeled; splash/return and
+spray arrows are explanatory, not simulation results. Existing bearing shields
+may prevent the proposed face wetting from reaching rolling elements. Bearing
+type and feed design must therefore be resolved together. Lubricant/resin/tube
+compatibility, flow demand and operating pressure are also unselected.
+
+Manufacturing options include separate tubing/fittings or a split, sealed manifold
+rather than trying to cast long curved bores with trapped cores. The CAD networks
+do not prove either process. The larger pan has end-wall notches and shaft openings;
+its parting, core removal, sealing lands, shrinkage and finishing need review.
+No claim of leak tightness, load capacity, printability or casting feasibility is
+made. Continuous cylinder walls and existing piston/rod/crank geometry are retained.
+
+The following describes the base separate-parts engine, before that extension.
+
+`efficio.examples.resin_engine.resin_engine_assembly()` is a standalone,
+editable first pass using the existing crank/piston motion and physical grouping
+facilities. `resin_engine_geometry()` selects the dimensions. It supersedes the
+windowed-block proposal below: manufactured liners have continuous walls; only
+display copies are cut for inspection. Existing drivetrain defaults are unchanged.
+
+The housing consists of four shared-definition flanged liners, a liner deck,
+head, two upper end bearing supports, one lower bearing frame, an outer coolant
+jacket and an oil pan. Liners have a 30 mm bore, 36 mm outside diameter and 39 mm
+flange; their running length is 48.5 mm. The 26 mm stroke leaves the piston skirt
+2 mm above the liner bottom at bottom dead center. Deck/jacket seats use 0.2 mm
+radial clearance as an editable geometric allowance, not a validated resin fit.
+Shells are 2.5 mm thick; no structural rating is implied.
+
+```bash
+PYTHONPATH=. poetry run python scripts/render_resin_engine.py --output-dir previews/resin-engine
+```
+
+The assembled, exploded and cutaway boards use actual CAD solids. Pale outlines
+represent candidate clear-resin parts without simulating refraction or optical
+quality. Colors distinguish other parts. The exploded view shows candidate
+boundaries, not a validated assembly sequence. The output JSON includes validity,
+volume, ownership, BOM and the interference result at 30 degrees.
+
+**Modeled versus proposed:** the jacket has an open-top cavity around the liners
+and two 4 mm-diameter side ports. The pan has an open-top cavity and a drain bore.
+These openings have no fittings or seals. Pump/radiator and oil pickup/pump/filter/
+feed/return routes are explicitly illustrative; there are no crank oilways,
+pressure network, fitted rings, valves or working circulation. The pan does not
+enclose the entire crankcase. Liners, jacket/deck joints, pan and shaft exits
+still require sealing decisions. Existing ball-bearing seats are retained, but
+plain versus rolling bearings and actual lubrication delivery remain undecided.
+Only the two original main bearings are listed as housing hardware. Head clamps,
+liner retention and gearbox mounts are not invented: their interfaces need design.
+
+**Casting and assembly intent:** use axial liner cores and separable external
+molds around the flange; open-top jacket/pan cavities allow removable core concepts.
+Side ports could be drilled after casting to avoid transverse mold cores. Head
+and deck can use face parting with hole pins. Split bearing supports expose the
+seat halves for assembly. None of these is completed tooling: draft, radii,
+core support, gates/vents, resin shrinkage, finishing and release need review.
+Piston bosses, wrist-pin holes and the ring groove especially need a mold/core
+strategy. Clear resin compatibility, clarity, creep and wear are unvalidated;
+metal liners, bushings or inserts may be preferable at sliding and bearing fits.
+No claim is made for printability, castability, leak tightness or load capacity.
+
+### Historical windowed toy-engine proposal (superseded)
+
+`efficio.examples.open_engine.demonstration_layout()` supplies the editable
+review configuration: four inline cylinders, 30 mm bore, 26 mm stroke, 52 mm
+rods and 40 mm cylinder pitch. Pass it to `rear_transaxle()` or `engine_assembly()`.
+The standard drivetrain defaults remain available for comparison. This toy
+proposal uses `EngineGeometry.windowed_block=True` for through-side windows
+and open head apertures; it is not a combustion engine.
+
+The 18 mm-wide windows leave fore/aft bore arcs for piston guidance. End walls,
+bearing seats, split-face/deck/base rails (4 mm) and side-mount bridges (8 mm)
+remain. These dimensions and the opening-width fraction are editable parameters.
+`problems()` checks their geometric limits and the existing mechanism clearances.
+Tests compare support-region material against the enclosed version, check solid
+connectivity and test discrete crank poses. They do not validate stiffness,
+fatigue, guide wear, piston tilting, manufacturing tolerances or assembly under load.
+
+```bash
+PYTHONPATH=. poetry run python scripts/render_open_engine.py --output-dir previews/open-engine
+```
+
+The boards and JSON measure actual CAD geometry. The initial proposal removes
+21.6% of housing solid volume versus the same enlarged engine with closed walls,
+but remains 30.5% above the smaller original housing because its bore, stroke and
+length increased. This is a first lightening proposal, not a minimum-material
+optimization. CAD volume is not slicer filament usage. Review printed guides and
+frame stiffness before choosing more aggressive openings or thinner members.
+
 ### Mold inspection and cutaways
 
 Generate geometry-derived example reports with the supported isolated environment:
@@ -275,3 +419,25 @@ production mold, suspension fixture, segmented plaster mold, silicone demolding
 cuts or process qualification. Valid CAD solids and printer bounds do not prove
 release, leak tightness, fastener strength or casting quality. Review the report's
 manufacturing limitations before fabrication.
+
+### Crank-driven educational oil pump
+
+`efficio.examples.pumped_engine.pumped_engine_assembly()` adds a reusable external
+gear-pump candidate, crank spur drive, mounting adapter, coarse serviceable
+strainer and actual hollow connections to the resin-engine lubrication review.
+The relief valve gap remains explicitly open; seals and performance are untested.
+See [design, limitations and bench gates](docs/external-gear-pump.md). Render with
+`PYTHONPATH=. poetry run python scripts/render_gear_pump.py` in the supported
+environment. This review does not establish a working or pressure-rated system.
+
+### Standalone water-feature pump experiment
+
+**Resume here:** [pump handoff, verified state and prioritized next steps](docs/water-pump-handoff.md).
+The latest full-face gasket review is separate from the earlier complete wet-end assembly.
+
+The independent [water-feature project](docs/water-feature-pump.md) provides a
+rounded wet end with blind journals and one drive-shaft exit. See
+`efficio/examples/water_feature_pump.py` for editable dimensions and
+`scripts/render_water_feature_pump.py` for real-CAD review images and STEP parts.
+Water performance is unverified; seal, bearing, retention and plumbing selections
+remain physical-build gates described in the project guide.

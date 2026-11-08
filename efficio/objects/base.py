@@ -1,6 +1,9 @@
-from typing import Optional, Tuple, TypeVar
+from typing import TYPE_CHECKING, Optional, Tuple, TypeVar
 
 from efficio.objects.shapes import Shape
+
+if TYPE_CHECKING:
+    from efficio.objects.gaskets import GasketDesign, GasketFace, GasketParameters
 
 Color = Tuple[int, int, int]
 """8-bit RGB colour used for previews."""
@@ -21,6 +24,18 @@ class EfficioObject:
 
     preview_color: Optional[Color] = None
     parent: Optional["EfficioObject"] = None
+
+    def gasket_faces(self) -> dict[str, "GasketFace"]:
+        """Explicit declarations; shape generation never silently inserts a gasket."""
+        return {}
+
+    def generate_gasket(
+        self, name: str, parameters: "GasketParameters"
+    ) -> "GasketDesign":
+        faces = self.gasket_faces()
+        if name not in faces:
+            raise ValueError(f"Unknown gasket face {name!r}; available: {list(faces)}")
+        return faces[name].generate(parameters)
 
     def cut(self) -> Optional[Shape]:
         return None

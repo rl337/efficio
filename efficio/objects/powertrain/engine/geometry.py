@@ -8,7 +8,7 @@ different bore, stroke or cylinder count stays self-consistent.
 
 import math
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Tuple
 
 from efficio.objects.fasteners.threads import MetricThread
 from efficio.objects.planar import Point, Span, circle_points, convex_hull, densify
@@ -80,6 +80,38 @@ class EngineGeometry:
     flange_bolt_depth: float = 10.0
     sweep_clearance: float = 0.5  # rod to bore / relief during the sweep
     journal_hole_clearance: float = 0.5  # crank journal through the end walls
+    # Demonstration-only lightening: expose the mechanism, retain guide arcs.
+    windowed_block: bool = False
+    window_width_fraction: float = 0.45  # opening width along Y / bore diameter
+    frame_rail: float = 4.0  # bottom, split-face and deck rails
+    mount_bridge_height: float = 8.0  # uncut horizontal band around side mounts
+
+    def block_windows(self) -> List[Tuple[float, float, float, float]]:
+        """Through-X windows as (y0, y1, z0, z1); never cut bearing end walls.
+
+        Fore/aft bore arcs guide the piston. Continuous split/deck/base rails
+        and the side-mount bridge join the remaining webs. This describes CAD
+        topology, not a structural rating or a combustion-capable cylinder.
+        """
+        if not self.windowed_block:
+            return []
+        spans = [(-self.block_half_width + self.frame_rail, -self.frame_rail)]
+        upper = (self.frame_rail, self.deck_height - self.frame_rail)
+        if self.side_mounts:
+            spans.extend(
+                [
+                    (upper[0], self.side_mount_height - self.mount_bridge_height / 2),
+                    (self.side_mount_height + self.mount_bridge_height / 2, upper[1]),
+                ]
+            )
+        else:
+            spans.append(upper)
+        half = self.bore * self.window_width_fraction / 2
+        return [
+            (self.cylinder_y(i) - half, self.cylinder_y(i) + half, z0, z1)
+            for i in range(self.cylinders)
+            for z0, z1 in spans
+        ]
 
     # ---------------------------------------------------------- crank train
     @property
@@ -288,6 +320,39 @@ class EngineGeometry:
 
     def problems(self) -> List[str]:
         issues: List[str] = []
+        if self.windowed_block:
+            if not all(
+                math.isfinite(v) and v > 0
+                for v in (
+                    self.window_width_fraction,
+                    self.frame_rail,
+                    self.mount_bridge_height,
+                )
+            ):
+                issues.append("window dimensions must be positive and finite")
+            elif not 0 < self.window_width_fraction < 1:
+                issues.append("windows must retain fore/aft piston guide arcs")
+            else:
+                half = self.bore * self.window_width_fraction / 2
+                bolt_y = self.bore / 2 - self.head_bolt_pitch_inset
+                if (
+                    half + self.fastener.spec.clearance_radius + self.block_wall
+                    > bolt_y
+                ):
+                    issues.append("windows leave too little material around head bolts")
+                if self.side_mounts and self.mount_bridge_height < 2 * (
+                    self.fastener.spec.clearance_radius + self.block_wall / 2
+                ):
+                    issues.append("side mount bridge too thin around bolt holes")
+                if any(
+                    y0 < self.end_wall
+                    or y1 > self.block_length - self.end_wall
+                    or z0 >= z1
+                    for y0, y1, z0, z1 in self.block_windows()
+                ):
+                    issues.append(
+                        "windows must clear end walls and retain positive height"
+                    )
         if self.cylinders < 1:
             issues.append("engine needs at least one cylinder")
         if self.rod_length <= self.crank_throw * 2:

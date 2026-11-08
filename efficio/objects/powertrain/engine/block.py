@@ -82,6 +82,8 @@ class EngineBlockHalf(EfficioObject):
         for y, z in e.side_mount_positions():
             block = block.cut(x_cylinder(tap, -hw - 1, -hw + depth, y, z))
             block = block.cut(x_cylinder(tap, hw - depth, hw + 1, y, z))
+        for y0, y1, z0, z1 in e.block_windows():
+            block = block.cut(box(-hw - 1, hw + 1, y0, y1, z0, z1))
         return block
 
     def shape(self) -> Optional[Shape]:
@@ -108,7 +110,13 @@ class CylinderHead(EfficioObject):
         head = box(-hw, hw, 0.0, e.block_length, 0.0, t)
         for i in range(e.cylinders):
             head = head.cut(
-                cylinder(e.bore / 2, -1.0, e.head_recess_depth, 0.0, e.cylinder_y(i))
+                cylinder(
+                    e.bore / 2,
+                    -1.0,
+                    t + 1.0 if e.windowed_block else e.head_recess_depth,
+                    0.0,
+                    e.cylinder_y(i),
+                )
             )
         for x, y in e.head_bolt_positions():
             head = head.cut(

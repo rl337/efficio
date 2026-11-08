@@ -10,6 +10,12 @@ import logging
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
+from efficio.examples.drivetrain_groups import (
+    group_differential,
+    group_engine,
+    group_gearbox,
+    group_sides,
+)
 from efficio.measures import Millimeter
 from efficio.objects.assembly import Assembly, PartSpec, PreviewPart
 from efficio.objects.base import DEFAULT_PREVIEW_COLOR, Color, EfficioObject
@@ -188,7 +194,7 @@ def add_engine(
     )
     place(flywheel, "flywheel", cx, cz, layout.flywheel_local.start, True, crank_angle)
     for index, span in enumerate(engine.centre_journals()):
-        centre_journal = rod_stock(
+        centre_journal = assembly.parts.get("crank_centre_journal") or rod_stock(
             "crank_centre_journal",
             journal,
             span,
@@ -695,6 +701,7 @@ def engine_assembly(
     layout = layout or DrivetrainLayout()
     assembly = Assembly(TransaxleSection.ENGINE.value, ENGINE_COLOR)
     add_engine(assembly, layout, crank_angle)
+    group_engine(assembly, layout.engine.cylinders)
     frame = layout.engine_frame()
     return assembly.relocate(frame.rotate_z, frame.origin)
 
@@ -707,6 +714,7 @@ def gearbox_assembly(
     layout = layout or DrivetrainLayout()
     assembly = Assembly(TransaxleSection.GEARBOX.value, GEARBOX_COLOR)
     add_gearbox(assembly, layout, crank_angle)
+    group_gearbox(assembly)
     return assembly
 
 
@@ -717,6 +725,7 @@ def differential_assembly(
     layout = layout or DrivetrainLayout()
     assembly = Assembly(TransaxleSection.DIFFERENTIAL.value, DIFFERENTIAL_COLOR)
     add_differential(assembly, layout, crank_angle)
+    group_differential(assembly)
     return assembly
 
 
@@ -727,6 +736,7 @@ def axle_assembly(
     layout = layout or DrivetrainLayout()
     assembly = Assembly(TransaxleSection.AXLES.value, AXLES_COLOR)
     add_axles(assembly, layout, crank_angle)
+    group_sides(assembly, "axle", [(108, 123, 139), (141, 157, 170)])
     return assembly
 
 
@@ -737,6 +747,7 @@ def wheel_assembly(
     layout = layout or DrivetrainLayout()
     assembly = Assembly(TransaxleSection.WHEELS.value, WHEELS_COLOR)
     add_wheels(assembly, layout, crank_angle)
+    group_sides(assembly, "wheel", [(100, 139, 180), (151, 169, 203)])
     return assembly
 
 

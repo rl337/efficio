@@ -62,3 +62,13 @@ Once a task is started and a Github Issue is created the following steps in the 
 6. Wait for verification github action to complete.  If the action fails, analyze failure treating that failure like a local test failure and return to step 3.
 7. When previous closing steps are complete, update the GitHub issue with what was accomplished.
 
+
+## Material-aware finished walls
+
+For new or revised load-bearing housings and tooling, declare material, process,
+service assumptions and a minimum finished-wall budget. Use a project-specific
+`WallPolicy` where applicable; validate named critical features after holes,
+recesses and bevels. Record exemptions and unmeasured regions. Keep shrinkage and
+machining allowances separate from finished-wall limits, and leave unsupported
+material/process profiles unqualified. A geometry pass is not structural or
+manufacturing certification. See `docs/wall-policy.md` for the initial pump case.

@@ -7,6 +7,7 @@ rendered on its own, nested inside a larger assembly, and given a
 
 import csv
 import os
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, Iterator, List, Optional, Tuple
 
@@ -101,10 +102,50 @@ class Assembly(EfficioObject):
 
     # ------------------------------------------------------------ hierarchy
     def add_subassembly(self, child: "Assembly") -> "Assembly":
+        if child is self or any(a is child for a in self._ancestors()):
+            raise ValueError("Assembly hierarchy cannot contain cycles")
         if child.parent is not None:
             raise ValueError(f"{child.name} already belongs to an assembly")
+        if any(c.name == child.name for c in self.children):
+            raise ValueError(f"Duplicate child assembly {child.name!r}")
         child.parent = self
         self.children.append(child)
+        return child
+
+    def _ancestors(self) -> Iterator["Assembly"]:
+        node = self.parent
+        while isinstance(node, Assembly):
+            yield node
+            node = node.parent
+
+    def group_instances(
+        self, name: str, labels: List[str], preview_color: Optional[Color] = None
+    ) -> "Assembly":
+        """Move direct occurrences into a child without rebuilding or moving solids.
+
+        Part definitions may be shared by children; each occurrence has exactly
+        one owner. Hardware is deliberately not copied: its owner must be chosen
+        explicitly by the application.
+        """
+        selected = set(labels)
+        if len(selected) != len(labels):
+            raise ValueError("Duplicate occurrence labels in grouping")
+        direct = {p.label: p for p in self.instances}
+        if len(direct) != len(self.instances):
+            raise ValueError("Direct occurrence labels must be unique")
+        if selected - direct.keys():
+            raise ValueError(
+                f"Unknown direct occurrences: {sorted(selected - direct.keys())}"
+            )
+        child = self.add_subassembly(Assembly(name, preview_color))
+        for placed in self.instances:
+            if placed.label in selected:
+                child.register(placed.spec)
+                placed.owner = child
+                child.instances.append(placed)
+        self.instances = [p for p in self.instances if p.label not in selected]
+        remaining = {p.part for p in self.instances}
+        self.parts = {key: spec for key, spec in self.parts.items() if key in remaining}
         return child
 
     def walk(self) -> Iterator["Assembly"]:
@@ -114,9 +155,11 @@ class Assembly(EfficioObject):
             yield from child.walk()
 
     def find(self, name: str) -> "Assembly":
-        for assembly in self.walk():
-            if assembly.name == name:
-                return assembly
+        matches = [a for a in self.walk() if a.name == name or a.path() == name]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise ValueError(f"Ambiguous assembly {name!r}; use its full path")
         raise KeyError(f"no sub-assembly named {name!r} in {self.name}")
 
     def all_instances(self) -> List[PlacedPart]:
@@ -141,6 +184,10 @@ class Assembly(EfficioObject):
 
     def register(self, spec: PartSpec) -> PartSpec:
         if spec.name in self.parts:
+            if self.parts[spec.name] is not spec:
+                raise ValueError(
+                    f"Conflicting part definition {spec.name!r}; reuse its PartSpec"
+                )
             return self.parts[spec.name]
         self.parts[spec.name] = spec
         if spec.obj.parent is None:
@@ -254,7 +301,16 @@ class Assembly(EfficioObject):
         return placed
 
     def instance(self, label: str) -> PlacedPart:
-        return next(p for p in self.all_instances() if p.label == label)
+        matches = [
+            p
+            for p in self.all_instances()
+            if p.label == label or f"{p.owner.path()} / {p.label}" == label
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise ValueError(f"Ambiguous occurrence {label!r}; use its full path")
+        raise KeyError(f"No occurrence {label!r}")
 
     def quantities(self) -> Dict[str, int]:
         counts: Dict[str, int] = {name: 0 for name in self.all_parts()}
@@ -318,10 +374,12 @@ class Assembly(EfficioObject):
     def bom_rows(self) -> List[Dict[str, str]]:
         """BOM grouped by the sub-assembly that owns each item."""
         rows: List[Dict[str, str]] = []
-        quantities = self.quantities()
         for assembly in self.walk():
+            quantities = Counter(p.part for p in assembly.instances)
             group = assembly.path()
             for name, spec in assembly.parts.items():
+                if not quantities[name]:
+                    continue
                 rows.append(
                     {
                         "assembly": group,
@@ -346,6 +404,25 @@ class Assembly(EfficioObject):
                     }
                 )
         return rows
+
+    def bom_totals(self) -> List[Dict[str, str]]:
+        """Procurement roll-up: count each occurrence once across the subtree.
+
+        Keep distinct process/material/notes variants separate. This does not
+        infer that differently named catalogue items are interchangeable.
+        """
+        self.all_parts()  # Reject conflicting identities across children.
+        totals: Dict[Tuple[str, ...], Dict[str, str]] = {}
+        for row in self.bom_rows():
+            key = tuple(
+                row[k] for k in ("item", "kind", "process", "material", "notes")
+            )
+            if key not in totals:
+                totals[key] = {**row, "assembly": self.path(), "quantity": "0"}
+            totals[key]["quantity"] = str(
+                int(totals[key]["quantity"]) + int(row["quantity"])
+            )
+        return list(totals.values())
 
     def bom_markdown(self) -> str:
         lines = [f"# {self.name} bill of materials", ""]

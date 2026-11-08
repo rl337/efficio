@@ -28,6 +28,8 @@ class Process(Enum):
     ROD_STOCK = "rod_stock"  # cut from ground rod, D-flat filed or ground
     DOWEL_STOCK = "dowel_stock"  # cut from hardwood dowel, cross-drilled
     PURCHASED = "purchased"
+    SLIP_CAST = "slip_cast_candidate"
+    RESIN_CAST = "resin_cast_candidate"  # tooling/material validation still required
 
 
 # Pockets that hide a nut or a socket head (sizes come from MetricThread).
