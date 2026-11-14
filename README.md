@@ -14,6 +14,12 @@ Efficio provides a high-level interface for creating 3D CAD models with a focus 
   `Bolt(MetricThread.M4, length)`, `HexNut`, `BoltChannel`, `M3Bolt(length)`)
 - Enclosures, mold tooling and vessels in their own submodules
   (`efficio.objects.enclosures`, `.molds`, `.vessels`)
+- Stylized stacking-chess pieces (`efficio.objects.games.chess`): `StylizedPawn`,
+  `StylizedRook`, `StylizedKnight`, `StylizedBishop`, `StylizedQueen` and
+  `StylizedKing`, each driven by a shared `ChessBodyDimensions` plus its own
+  dimensions dataclass. The defaults reproduce the prototype set for 1.75 in
+  squares; `efficio.examples.stacking_chess.export_stacking_chess_stls(dir)`
+  writes one STL per piece type
 - Machine build volumes for the Prusa MK4 and Makera Z1 (`efficio.machines`)
 - Export to STL, PNG, and SVG formats
 - Spatial geometry validation
