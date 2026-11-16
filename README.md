@@ -20,6 +20,15 @@ Efficio provides a high-level interface for creating 3D CAD models with a focus 
   dimensions dataclass. The defaults reproduce the prototype set for 1.75 in
   squares; `efficio.examples.stacking_chess.export_stacking_chess_stls(dir)`
   writes one STL per piece type
+- Keyed resin cylinders, modular printed masters and cottle for casting the
+  chess pieces (`efficio.objects.games.chess`): `ResinMoldPlan` sizes the
+  oval boss/notch cylinder, the bottom cap / spacer / top cap / funnel master,
+  the frame, plate, level lid and parting blocks A and B, and the M3
+  self-tapping hold-down (hole sizes from `MetricThread`). Walls carry
+  provisional `WallPolicy` budgets for printed PETG, silicone and cast resin.
+  `efficio.examples.stacking_chess_molds.export_stacking_chess_mold_stls(dir)`
+  checks every part against the Prusa MK4 and writes the STLs;
+  `scripts/render_stacking_chess.py` renders the previews
 - Machine build volumes for the Prusa MK4 and Makera Z1 (`efficio.machines`)
 - Export to STL, PNG, and SVG formats
 - Spatial geometry validation
