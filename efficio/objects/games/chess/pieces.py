@@ -1,7 +1,7 @@
 """Stylized stacking-chess pieces built from :mod:`.geometry` dimensions.
 
-Every piece shares a bevelled base, a platform with a rounded top, a concave
-stem and (except the rook) a rounded shoulder; the head is what tells them
+Every piece shares one rounded base disc, a short concave stem and (except the
+rook) a rounded shoulder; the head is what tells them
 apart.  Heads that are flat slabs (knight head, king cross) lie in the XZ
 plane, so XZ is the natural parting plane for a two-part mold.
 """
@@ -93,21 +93,7 @@ class AbstractStylizedChessPiece(EfficioObject):
 
     def body_solid(self) -> cq.Workplane:
         b = self.body
-        base = (
-            cylinder(b.base_radius, 0, b.base_height)
-            .faces(">Z")
-            .edges()
-            .chamfer(b.base_top_chamfer)
-            .faces("<Z")
-            .edges()
-            .chamfer(b.base_bottom_chamfer)
-        )
-        platform = (
-            cylinder(b.platform_radius, b.base_height, b.platform_top)
-            .faces(">Z")
-            .edges()
-            .fillet(b.edge_round)
-        )
+        base = cylinder(b.base_radius, 0, b.base_height).edges().fillet(b.base_round)
         stem_points = b.stem_profile(self.stem_top_radius(), self.shoulder_z())
         stem = _revolve_profile(
             (0, stem_points[0][1]),
@@ -115,7 +101,7 @@ class AbstractStylizedChessPiece(EfficioObject):
             spline=stem_points[1:],
             closing=[(0, self.shoulder_z() + b.stem_overlap)],
         )
-        solid = base.union(platform).union(stem)
+        solid = base.union(stem)
         radius = self.shoulder_radius()
         if radius is not None:
             shoulder = (

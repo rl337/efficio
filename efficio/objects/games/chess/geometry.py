@@ -3,7 +3,9 @@
 All lengths are millimetres. Each piece stands on +Z with its base at z = 0;
 heights inside a piece's head are measured from the top of its shoulder.
 The defaults reproduce the prototype set sized for 1.75 in board squares
-(32 mm base inside a 38 mm clear-resin cylinder).
+(32 mm base inside a 38 mm clear-resin cylinder).  The set is compact: each
+piece is roughly half the height of the first prototype, with a single rounded
+base disc and a short stem under the shoulder.
 """
 
 import math
@@ -74,33 +76,29 @@ class _Validated:
 
 @dataclass(frozen=True)
 class ChessBodyDimensions(_Validated):
-    """Shared base, platform, stem and shoulder of every piece."""
+    """Shared base, stem and shoulder of every piece.
+
+    The base is one cylinder with both circular edges rounded by ``base_round``.
+    """
 
     base_radius: float = 16.0
-    base_height: float = 6.0
-    base_top_chamfer: float = 1.5
-    base_bottom_chamfer: float = 0.6
-    platform_radius: float = 12.0
-    platform_height: float = 5.0
-    edge_round: float = 1.5  # platform top edge and both shoulder edges
+    base_height: float = 7.0
+    base_round: float = 2.5  # fillet on the top and bottom edge of the base
+    edge_round: float = 1.2  # both shoulder edges
     stem_bottom_radius: float = 9.0  # shared by every piece
     stem_curve: float = 0.6  # 0 = straight taper, 1 = strongly concave
-    stem_overlap: float = 0.5  # stem runs this far into platform and shoulder
+    stem_overlap: float = 0.5  # stem runs this far into base and shoulder
     stem_samples: int = 12
-    shoulder_height: float = 4.0
-    back_row_shoulder_z: float = 43.0
-    pawn_shoulder_z: float = 30.0
+    shoulder_height: float = 3.0
+    back_row_shoulder_z: float = 13.0
+    pawn_shoulder_z: float = 11.0
     pin_socket_diameter: float = 8.3  # locating-pin socket in the base
     pin_socket_depth: float = 5.0  # 0 leaves the base solid
     bevel_clearance: float = 0.3  # bevels stop this far above a seated edge
 
-    @property
-    def platform_top(self) -> float:
-        return self.base_height + self.platform_height
-
     def stem_profile(self, stem_top_radius: float, shoulder_z: float) -> List[Point]:
-        """(radius, z) points of the concave stem, platform to shoulder."""
-        z0 = self.platform_top
+        """(radius, z) points of the concave stem, base top to shoulder."""
+        z0 = self.base_height
         control_z = z0 + (1 - self.stem_curve) * (shoulder_z - z0)
         return quadratic_bezier(
             (self.stem_bottom_radius, z0 - self.stem_overlap),
@@ -120,23 +118,21 @@ class ChessBodyDimensions(_Validated):
             problems.append("stem_curve must be between 0 and 1")
         if self.stem_samples < 2:
             problems.append("stem_samples must be at least 2")
-        if not 0 <= self.stem_overlap < self.platform_height:
-            problems.append("stem_overlap must be shorter than the platform")
-        if self.base_top_chamfer + self.base_bottom_chamfer >= self.base_height:
-            problems.append("base chamfers must leave a straight band")
-        if self.platform_radius >= self.base_radius - self.base_top_chamfer:
-            problems.append("platform must sit inside the bevelled base top")
-        if self.stem_bottom_radius >= self.platform_radius - self.edge_round:
-            problems.append("stem must start inside the rounded platform top")
-        if self.edge_round >= min(self.platform_height, self.shoulder_height / 2):
-            problems.append("edge_round is too large for the platform or shoulder")
+        if not 0 <= self.stem_overlap < self.base_height:
+            problems.append("stem_overlap must be shorter than the base")
+        if 2 * self.base_round >= self.base_height:
+            problems.append("base_round is too large for the base height")
+        if self.stem_bottom_radius >= self.base_radius - self.base_round:
+            problems.append("stem must start inside the rounded base top")
+        if self.edge_round >= self.shoulder_height / 2:
+            problems.append("edge_round is too large for the shoulder")
         for name in ("pawn_shoulder_z", "back_row_shoulder_z"):
-            if getattr(self, name) <= self.platform_top + self.stem_overlap:
-                problems.append(f"{name} must be above the platform")
+            if getattr(self, name) <= self.base_height + self.stem_overlap:
+                problems.append(f"{name} must be above the base")
         if self.pin_socket_depth < 0:
             problems.append("pin_socket_depth must not be negative")
-        elif self.pin_socket_depth >= self.platform_top:
-            problems.append("pin socket must stay inside the base and platform")
+        elif self.pin_socket_depth >= self.base_height:
+            problems.append("pin socket must stay inside the base")
         if self.pin_socket_diameter >= 2 * self.stem_bottom_radius:
             problems.append("pin socket must be narrower than the stem")
         return problems
@@ -161,9 +157,9 @@ def _shoulder_problems(
 
 @dataclass(frozen=True)
 class PawnDimensions(_Validated):
-    stem_top_radius: float = 4.5
-    shoulder_radius: float = 9.0
-    ball_radius: float = 9.5
+    stem_top_radius: float = 4.0
+    shoulder_radius: float = 8.0
+    ball_radius: float = 7.5
 
     def ball_center_above_shoulder(self) -> float:
         """Ball sunk so its flat on the shoulder is as wide as the stem top."""
@@ -186,8 +182,8 @@ class RookDimensions(_Validated):
     stem_top_radius: float = 7.5
     head_width: float = 22.0
     head_height: float = 15.0
-    crenel_width: float = 8.0
-    crenel_depth: float = 5.5
+    crenel_width: float = 7.0
+    crenel_depth: float = 5.0
     cross_crenels: bool = True  # "+" (four merlons); False cuts a single "-"
 
     def problems(self) -> List[str]:
@@ -208,16 +204,16 @@ class RookDimensions(_Validated):
 # Knight head outline in the XZ plane, z measured up from the shoulder top:
 # back of the head with two mane notches, ear, face, snubbed snout, flat jaw.
 KNIGHT_OUTLINE: Tuple[Point, ...] = (
-    (-11.0, 0.0),
-    (-7.6, 19.55),
-    (-4.85, 20.1),
-    (-6.95, 22.0),
-    (-6.3, 24.4),
-    (-3.55, 24.95),
-    (-5.65, 26.8),
-    (-4.5, 31.0),
-    (16.0, 6.4),
-    (16.0, 0.0),
+    (-10.01, 0.0),
+    (-6.92, 12.71),
+    (-4.41, 13.07),
+    (-6.32, 14.3),
+    (-5.73, 15.86),
+    (-3.23, 16.22),
+    (-5.14, 17.42),
+    (-4.09, 20.15),
+    (14.56, 4.16),
+    (14.56, 0.0),
 )
 
 
@@ -225,14 +221,14 @@ KNIGHT_OUTLINE: Tuple[Point, ...] = (
 class KnightDimensions(_Validated):
     """Flat, bevelled head slab standing on a round shoulder."""
 
-    stem_top_radius: float = 6.0
-    shoulder_radius: float = 11.0
+    stem_top_radius: float = 5.5
+    shoulder_radius: float = 10.0
     head_outline: Tuple[Point, ...] = KNIGHT_OUTLINE
-    head_thickness: float = 9.0
-    bevel: float = 1.0
-    eye_diameter: float = 3.0
-    eye_center: Point = (1.5, 15.5)
-    eye_depth: float = 1.2  # dimple on each face
+    head_thickness: float = 8.0
+    bevel: float = 0.7
+    eye_diameter: float = 2.6
+    eye_center: Point = (1.4, 10.1)
+    eye_depth: float = 1.0  # dimple on each face
 
     def shortest_outline_edge(self) -> float:
         pts = self.head_outline
@@ -263,20 +259,20 @@ class BishopDimensions(_Validated):
     """Revolved head growing from the stem-top width, oblong finial, mitre slit."""
 
     stem_top_radius: float = 5.0
-    shoulder_radius: float = 12.0
+    shoulder_radius: float = 10.5
     # Head profile (radius, height above shoulder) after its start at the
     # stem-top radius: control points of the lower and upper cubic Beziers.
-    head_lower: Tuple[Point, Point, Point] = ((7.0, 7.0), (9.0, 12.0), (9.0, 17.0))
-    head_upper: Tuple[Point, Point, Point] = ((9.0, 25.0), (4.0, 30.0), (0.0, 31.0))
+    head_lower: Tuple[Point, Point, Point] = ((6.0, 5.0), (7.7, 8.6), (7.7, 12.2))
+    head_upper: Tuple[Point, Point, Point] = ((7.7, 18.0), (3.4, 21.6), (0.0, 22.3))
     curve_samples: int = 16
-    finial_radius: float = 3.5
-    finial_half_height: float = 5.5
-    finial_center: float = 30.0  # above the shoulder top
+    finial_radius: float = 3.0
+    finial_half_height: float = 4.0
+    finial_center: float = 21.6  # above the shoulder top
     slit: bool = True
-    slit_width: float = 1.6
+    slit_width: float = 1.4
     slit_angle: float = 40.0  # degrees below horizontal, falling toward +X
-    slit_inner: Point = (-2.0, 23.0)  # where the cut stops, past the centre line
-    slit_outer_x: float = 14.0  # far enough out to clear the head
+    slit_inner: Point = (-1.7, 16.5)  # where the cut stops, past the centre line
+    slit_outer_x: float = 12.0  # far enough out to clear the head
 
     def head_curves(self) -> Tuple[Cubic, Cubic]:
         lower: Cubic = ((self.stem_top_radius, 0.0), *self.head_lower)
@@ -309,19 +305,19 @@ class QueenDimensions(_Validated):
     """Short neck under a flared crown with radial V notches (no ball)."""
 
     stem_top_radius: float = 6.0
-    shoulder_radius: float = 13.0
-    neck_radius: float = 4.0
-    neck_height: float = 7.0
-    crown_offset: float = 5.0  # crown starts this far above the shoulder top
-    crown_base_radius: float = 6.0
-    crown_top_radius: float = 12.0
-    crown_height: float = 20.0
+    shoulder_radius: float = 11.0
+    neck_radius: float = 3.5
+    neck_height: float = 4.0
+    crown_offset: float = 3.0  # crown starts this far above the shoulder top
+    crown_base_radius: float = 5.0
+    crown_top_radius: float = 10.0
+    crown_height: float = 18.0
     notch_count: int = 8
-    notch_width: float = 5.0
-    notch_depth: float = 6.0
+    notch_width: float = 4.0
+    notch_depth: float = 5.0
     notch_overcut: float = 0.5
-    notch_inner_radius: float = 5.5
-    notch_length: float = 9.0
+    notch_inner_radius: float = 4.5
+    notch_length: float = 8.0
     notch_phase: float = 22.5  # degrees
 
     def problems(self) -> List[str]:
@@ -344,19 +340,19 @@ class QueenDimensions(_Validated):
 class KingDimensions(_Validated):
     """Round head with a filleted top under a flat, bevelled cross."""
 
-    stem_top_radius: float = 6.5
-    shoulder_radius: float = 13.0
-    head_radius: float = 9.0
-    head_height: float = 17.0
+    stem_top_radius: float = 5.5
+    shoulder_radius: float = 11.0
+    head_radius: float = 8.0
+    head_height: float = 11.0
     head_fillet: float = 1.5
-    cross_thickness: float = 6.0
-    bar_width: float = 6.0
-    bar_height: float = 22.0
-    arm_span: float = 14.0
-    arm_height: float = 6.0
-    arm_offset: float = 10.0  # arm bottom above the bar bottom
+    cross_thickness: float = 5.0
+    bar_width: float = 5.0
+    bar_height: float = 17.0
+    arm_span: float = 12.0
+    arm_height: float = 5.0
+    arm_offset: float = 7.0  # arm bottom above the bar bottom
     cross_embed: float = 0.5  # cross sinks into the head top
-    bevel: float = 1.0
+    bevel: float = 0.8
 
     def problems(self) -> List[str]:
         problems = _positive(self)

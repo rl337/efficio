@@ -31,14 +31,14 @@ from efficio.objects.games.chess import (
 )
 from efficio.objects.games.chess.geometry import cubic_bezier, quadratic_bezier
 
-# Volume (mm^3) and height (mm) of the prototype set the defaults reproduce.
+# Volume (mm^3) and height (mm) of the compact set the defaults produce.
 PROTOTYPE: List[Tuple[Callable[[], AbstractStylizedChessPiece], float, float]] = [
-    (StylizedPawn, 13280.9365, 51.8666),
-    (StylizedRook, 18689.6193, 58.0),
-    (StylizedKnight, 17243.8085, 77.2318),
-    (StylizedBishop, 17377.1355, 82.5),
-    (StylizedQueen, 18416.7630, 72.0),
-    (StylizedKing, 19317.2113, 85.5),
+    (StylizedPawn, 7786.3188, 27.8443),
+    (StylizedRook, 12248.3469, 28.0),
+    (StylizedKnight, 9077.9505, 35.6944),
+    (StylizedBishop, 9518.9247, 41.6),
+    (StylizedQueen, 10138.5829, 37.0),
+    (StylizedKing, 9746.7465, 43.5),
 ]
 
 
@@ -60,7 +60,7 @@ def _volume(piece: AbstractStylizedChessPiece) -> float:
     PROTOTYPE,
     ids=[getattr(make, "__name__") for make, _, _ in PROTOTYPE],
 )
-def test_defaults_reproduce_prototype_set(
+def test_defaults_reproduce_compact_set(
     make: Callable[[], AbstractStylizedChessPiece], volume: float, height: float
 ) -> None:
     piece = make()
@@ -82,8 +82,10 @@ def test_pin_socket_is_a_parameter() -> None:
 
 def test_rook_single_crenel_keeps_the_other_slot() -> None:
     single = StylizedRook(dimensions=RookDimensions(cross_crenels=False))
-    # Filling one slot adds its length outside the other slot: 8 x 14 x 5.5.
-    assert _volume(single) - _volume(StylizedRook()) == pytest.approx(616, rel=1e-3)
+    # Filling one slot adds its length outside the other slot: 7 x 15 x 5.
+    assert _volume(single) - _volume(StylizedRook()) == pytest.approx(
+        7 * 15 * 5, rel=1e-3
+    )
 
 
 def test_bishop_slit_and_finial_are_parameters() -> None:
@@ -94,13 +96,12 @@ def test_bishop_slit_and_finial_are_parameters() -> None:
     assert shape is not None
     bounds = shape.bounds()
     assert bounds is not None
-    assert bounds[5] == pytest.approx(82.5 + 1.5, abs=1e-3)
+    assert bounds[5] == pytest.approx(41.6 + 3.0, abs=1e-3)
 
 
 def test_other_body_and_head_dimensions_build() -> None:
     body = ChessBodyDimensions(
         base_radius=18,
-        platform_radius=13.5,
         stem_bottom_radius=10,
         back_row_shoulder_z=48,
         stem_curve=0.2,
@@ -108,7 +109,7 @@ def test_other_body_and_head_dimensions_build() -> None:
     pieces = [
         StylizedPawn(body, PawnDimensions(ball_radius=11)),
         StylizedRook(body, RookDimensions(head_width=24, crenel_width=6)),
-        StylizedKnight(body, KnightDimensions(head_thickness=11, bevel=1.2)),
+        StylizedKnight(body, KnightDimensions(head_thickness=11, bevel=0.8)),
         StylizedBishop(body),
         StylizedQueen(body, QueenDimensions(notch_count=6, notch_phase=0)),
         StylizedKing(body, KingDimensions(bar_height=26, arm_offset=12)),
@@ -128,13 +129,13 @@ def test_pawn_ball_flat_matches_stem_top() -> None:
     assert flat == pytest.approx(2 * d.stem_top_radius)
 
 
-def test_stem_profile_spans_platform_to_shoulder() -> None:
+def test_stem_profile_spans_base_to_shoulder() -> None:
     body = ChessBodyDimensions()
     profile = body.stem_profile(6.0, 43.0)
     assert len(profile) == body.stem_samples + 1
-    assert profile[0] == (9.0, body.platform_top - body.stem_overlap)
+    assert profile[0] == (9.0, body.base_height - body.stem_overlap)
     assert profile[-1] == (6.0, 43.0 + body.stem_overlap)
-    # Concave: the stem narrows faster near the platform than near the shoulder.
+    # Concave: the stem narrows faster near the base than near the shoulder.
     assert profile[1][0] - profile[2][0] > profile[-2][0] - profile[-1][0]
 
 
@@ -154,29 +155,29 @@ def test_bishop_head_starts_at_stem_top() -> None:
     d = BishopDimensions(stem_top_radius=4.0)
     profile = d.head_profile()
     assert profile[0] == (4.0, 0.0)
-    assert profile[-1] == (0.0, 31.0)
+    assert profile[-1] == (0.0, 22.3)
 
 
 @pytest.mark.parametrize(
     "make",
     [
-        lambda: ChessBodyDimensions(platform_radius=15),
+        lambda: ChessBodyDimensions(base_round=4),
         lambda: ChessBodyDimensions(edge_round=2.5),
         lambda: ChessBodyDimensions(pin_socket_depth=12),
         lambda: ChessBodyDimensions(pin_socket_depth=-1),
         lambda: ChessBodyDimensions(stem_curve=1.5),
         lambda: ChessBodyDimensions(base_height=-6),
-        lambda: ChessBodyDimensions(pawn_shoulder_z=10),
-        lambda: ChessBodyDimensions(base_top_chamfer=float("nan")),
+        lambda: ChessBodyDimensions(pawn_shoulder_z=7),
+        lambda: ChessBodyDimensions(base_round=float("nan")),
         lambda: PawnDimensions(ball_radius=4),
         lambda: RookDimensions(crenel_width=30),
         lambda: RookDimensions(crenel_depth=20),
         lambda: KnightDimensions(bevel=5),
-        lambda: KnightDimensions(bevel=1.5),  # mane notch edges are ~2.5 mm
+        lambda: KnightDimensions(bevel=1.0),  # mane notch edges are ~1.7 mm
         lambda: KnightDimensions(eye_depth=5),
         lambda: KnightDimensions(head_outline=((0.0, 0.0), (1.0, 1.0))),
         lambda: BishopDimensions(slit_angle=95),
-        lambda: BishopDimensions(head_upper=((9.0, 25.0), (4.0, 30.0), (1.0, 31.0))),
+        lambda: BishopDimensions(head_upper=((7.7, 18.0), (3.4, 21.6), (1.0, 22.3))),
         lambda: QueenDimensions(crown_offset=8),
         lambda: QueenDimensions(notch_depth=25),
         lambda: QueenDimensions(notch_length=5),
@@ -192,11 +193,11 @@ def test_bad_dimensions_are_rejected(make: object) -> None:
 
 
 def test_pieces_check_dimensions_against_the_body() -> None:
-    small = ChessBodyDimensions(base_radius=12, platform_radius=9, stem_bottom_radius=6)
+    small = ChessBodyDimensions(base_radius=12, stem_bottom_radius=6)
     with pytest.raises(ValueError, match="knight head"):
         StylizedKnight(small, KnightDimensions(stem_top_radius=5, shoulder_radius=9))
     with pytest.raises(ValueError, match="shoulder"):
-        StylizedKing(dimensions=KingDimensions(shoulder_radius=7))
+        StylizedKing(dimensions=KingDimensions(shoulder_radius=6))
     with pytest.raises(ValueError, match="stem top"):
         StylizedRook(small)
     with pytest.raises(ValueError, match="overhang"):
@@ -206,8 +207,8 @@ def test_pieces_check_dimensions_against_the_body() -> None:
 
 
 def test_knight_outline_reaches_the_snout() -> None:
-    assert max(x for x, _ in KNIGHT_OUTLINE) == 16.0
-    assert max(z for _, z in KNIGHT_OUTLINE) == 31.0
+    assert max(x for x, _ in KNIGHT_OUTLINE) == 14.56
+    assert max(z for _, z in KNIGHT_OUTLINE) == 20.15
 
 
 def test_set_has_sixteen_pieces_and_exports(tmp_path: Path) -> None:
